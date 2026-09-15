@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { exchangeCodeForToken, decodeIdToken } from '../../../../../lib/naverworks';
 import { createSessionCookieValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from '../../../../../lib/session';
 import { createServiceClient } from '../../../../../lib/supabaseServer';
+import { saveTokens } from '../../../../../lib/oauthTokens';
 
 // 네이버웍스 로그인 화면에서 승인하고 돌아오는 곳. 여기서:
 // 1) state로 CSRF 확인 2) code를 토큰으로 교환 3) id_token에서 이메일 꺼내기
@@ -34,9 +35,7 @@ export async function GET(request) {
     return NextResponse.redirect(`${baseUrl}/login?error=id_token_invalid`);
   }
 
-  // ⚠️ 확인 필요: 이메일/이름 필드가 실제로 이 키(email, name)로 오는지는 첫 로그인
-  // 테스트에서 실제 payload를 콘솔에 찍어보고 확인해야 한다(문서상 OIDC 표준 클레임
-  // 이름을 따랐을 거라 가정한 것).
+  // 2026-09-15: email/name 클레임 실제 로그인으로 확인 완료(박길일님, 팀장님 계정).
   const email = claims.email;
   const name = claims.name || claims.sub || '';
 
@@ -58,6 +57,15 @@ export async function GET(request) {
   if (!allowedUser) {
     // 로그인(신원 확인)은 됐지만 사용 권한이 없는 경우 — 관리자에게 등록을 요청해야 함.
     return NextResponse.redirect(`${baseUrl}/login?error=not_allowed&email=${encodeURIComponent(email)}`);
+  }
+
+  // 자동게시 때 이 사람 이름으로 글을 쓸 수 있도록 토큰을 저장해둔다. 이게 실패해도
+  // 로그인 자체는 막지 않는다 — 게시는 나중에 다시 로그인하면 되지만, 로그인이
+  // 막히면 아예 체크리스트를 못 쓰게 되니 그게 더 나쁘다.
+  try {
+    await saveTokens(email, tokenResponse);
+  } catch (err) {
+    console.error('토큰 저장 실패(로그인은 계속 진행):', err);
   }
 
   const cookieValue = await createSessionCookieValue({

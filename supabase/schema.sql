@@ -113,3 +113,18 @@ create table if not exists allowed_users (
 alter table allowed_users enable row level security;
 -- 이 표는 로그인 콜백(서버, service_role 키)에서만 읽는다 — 브라우저(anon 키)는 접근 불가.
 create policy "service role only" on allowed_users for all using (false) with check (false);
+
+-- ---- 로그인 토큰 저장 (자동게시용, 2026-09-15 추가) ----
+-- 점검원이 로그인할 때 받은 access_token·refresh_token을 저장해뒀다가, 나중에
+-- "게시" 버튼을 누르는 시점(로그인보다 한참 뒤일 수 있음)에 그 사람 이름으로
+-- 게시판 글을 쓸 때 다시 꺼내 쓴다. access_token은 금방 만료되니 refresh_token으로
+-- 필요할 때마다 갱신한다(app/api/naverworks/post/route.js 참고).
+create table if not exists oauth_tokens (
+  email text primary key,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  updated_at timestamptz not null default now()
+);
+alter table oauth_tokens enable row level security;
+create policy "service role only" on oauth_tokens for all using (false) with check (false);
