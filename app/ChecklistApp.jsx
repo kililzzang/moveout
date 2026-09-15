@@ -433,7 +433,7 @@ function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCus
   );
 }
 
-function ReportOverlay({ text, saveStatus, postStatus, imageStatus, onClose, onCopyAgain }) {
+function ReportOverlay({ text, saveStatus, postStatus, imageStatus, onClose, onCopyAgain, onPost, posting, posted }) {
   return (
     <div className="overlay">
       <div className="report-box">
@@ -444,6 +444,11 @@ function ReportOverlay({ text, saveStatus, postStatus, imageStatus, onClose, onC
         <textarea className="report-textarea" readOnly value={text} />
         <div className="report-actions">
           <button type="button" className="btn" onClick={onCopyAgain}>다시 복사</button>
+          {/* 2026-09-15: 네이버웍스 자동게시(API 직접 호출) 버튼 — 로그인한 사람 계정으로
+              바로 게시된다. 로그인 필요, /api/naverworks/post 호출. */}
+          <button type="button" className="btn" onClick={onPost} disabled={posting || posted}>
+            {posted ? '게시 완료' : posting ? '게시 중…' : '네이버웍스에 게시'}
+          </button>
           <button type="button" className="btn primary" onClick={onClose}>닫기</button>
         </div>
       </div>
@@ -465,6 +470,8 @@ export default function ChecklistApp() {
   const [reportText, setReportText] = useState('');
   const [saveStatus, setSaveStatus] = useState({ kind: '', text: '' });
   const [postStatus, setPostStatus] = useState({ kind: '', text: '' });
+  const [posting, setPosting] = useState(false);
+  const [posted, setPosted] = useState(false);
   const [imageStatus, setImageStatus] = useState({ kind: '', text: '' });
   const [learnedStats, setLearnedStats] = useState({});
   const [lightboxItem, setLightboxItem] = useState(null);
@@ -609,6 +616,7 @@ export default function ChecklistApp() {
     setSaveStatus({ kind: '', text: '저장 확인 중…' });
     setPostStatus({ kind: '', text: '게시글 준비 확인 중…' });
     setImageStatus({ kind: '', text: '점검결과표 이미지 생성 중…' });
+    setPosted(false);
     setReportOpen(true);
 
     navigator.clipboard?.writeText(text).catch(() => {});
@@ -649,10 +657,34 @@ export default function ChecklistApp() {
         queued_at: new Date().toISOString(),
       });
       if (error) throw error;
-      setPostStatus({ kind: 'ok', text: '게시글 준비 완료 — "게시글 올려줘"라고 하면 바로 올려드려요' });
+      setPostStatus({ kind: 'ok', text: '게시글 준비 완료 — 아래 "네이버웍스에 게시" 버튼을 누르면 바로 올라가요' });
     } catch (e) {
       setImageStatus({ kind: 'fail', text: '이미지 생성 실패: ' + e.message });
       setPostStatus({ kind: 'fail', text: '게시글 준비 실패 — 다시 시도해주세요' });
+    }
+  }
+
+  // 2026-09-15: 네이버웍스 자동게시 버튼. 로그인한 사람 계정으로 API를 직접 호출해서
+  // 게시한다(더 이상 "게시글 올려줘"라고 말해서 브라우저 자동화를 거칠 필요 없음).
+  // 로그인 세션은 쿠키로 자동 전달되므로 별도로 토큰을 넘길 필요는 없다.
+  async function handlePostToNaverWorks() {
+    setPosting(true);
+    setPostStatus({ kind: '', text: '네이버웍스에 게시 중…' });
+    try {
+      const res = await fetch('/api/naverworks/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: docId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('게시 실패: ' + res.status));
+      setPosted(true);
+      setPostStatus({ kind: 'ok', text: '네이버웍스 게시 완료' });
+      showToast('네이버웍스에 게시했어요');
+    } catch (e) {
+      setPostStatus({ kind: 'fail', text: '게시 실패: ' + e.message });
+    } finally {
+      setPosting(false);
     }
   }
 
@@ -738,6 +770,9 @@ export default function ChecklistApp() {
           imageStatus={imageStatus}
           onClose={() => setReportOpen(false)}
           onCopyAgain={() => navigator.clipboard?.writeText(reportText)}
+          onPost={handlePostToNaverWorks}
+          posting={posting}
+          posted={posted}
         />
       )}
       {cleanupOpen && (
