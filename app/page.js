@@ -1,24 +1,9 @@
-import { SECTIONS } from '../lib/sections';
-import unitHistory from '../lib/unitHistory.json';
-import SupabasePing from './SupabasePing';
+import ChecklistApp from './ChecklistApp';
 
-// 임시 상태 페이지 — 아직 실제 체크리스트 UI(아티팩트의 2800줄짜리 화면)는 이식 전이다.
-// 지금은 "데이터·DB 배선이 제대로 됐는지"만 확인하는 용도. 다음 단계에서 이 페이지를
-// 실제 체크리스트 폼으로 교체한다.
+// Supabase 클라이언트가 브라우저에서만 만들어지도록(빌드 시점 정적 프리렌더를 건너뛰게)
+// 강제한다 — 빌드 서버엔 Supabase 키가 없어도 되고, 실제 배포에선 Vercel 환경변수가 있다.
+export const dynamic = 'force-dynamic';
+
 export default function Home() {
-  const itemCount = SECTIONS.reduce((sum, s) => sum + s.items.length, 0);
-  return (
-    <main style={{ maxWidth: 640, margin: '0 auto', padding: '40px 20px' }}>
-      <h1 style={{ fontSize: 22 }}>퇴실점검 클립보드 — 웹앱 전환 진행 중</h1>
-      <p style={{ color: 'var(--ink-soft)', lineHeight: 1.6 }}>
-        아직 체크리스트 화면 자체는 이식하기 전 단계입니다. 지금 이 페이지는 데이터·DB
-        배선이 제대로 됐는지만 확인하는 임시 화면이에요.
-      </p>
-      <ul style={{ lineHeight: 1.9 }}>
-        <li>SECTIONS: {SECTIONS.length}개 구분, 항목 {itemCount}개 (lib/sections.json에서 로드됨)</li>
-        <li>UNIT_HISTORY: {unitHistory.length}개 호실 이력 (lib/unitHistory.json에서 로드됨, 아직 Supabase로 이전 전)</li>
-      </ul>
-      <SupabasePing />
-    </main>
-  );
+  return <ChecklistApp />;
 }
