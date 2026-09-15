@@ -94,3 +94,22 @@ create policy "public read/write (no auth yet)" on unit_history for all using (t
 -- ---- Storage: 사진/동영상 버킷 (예전 assets capability) ----
 -- SQL Editor에선 버킷을 못 만듭니다 — Supabase 대시보드 > Storage 에서
 -- "photos" 라는 이름으로 버킷을 하나 만들고 Public을 켜주세요(팀 링크 공유와 동일한 수준).
+
+-- ---- 로그인 허용 명단 (네이버웍스 OAuth 로그인용, 2026-09-15 추가) ----
+-- 네이버웍스 계정으로 로그인은 회사 조직 구성원이면 누구나 시도할 수 있지만,
+-- 실제로 이 앱을 쓸 수 있는지는 이 표에 이메일이 등록돼 있는지로 따로 가른다
+-- (로그인=신원 확인, 이 표=권한 확인 — 둘은 별개). role은 관리자/점검원/청소/보수
+-- 중 하나. 초기 명단은 팀장님께 받아서 여기 수동으로 넣는다 — 관리 화면은 다음 단계.
+create table if not exists allowed_users (
+  email text primary key,
+  name text not null default '',
+  role text not null default 'inspector' check (role in ('admin', 'inspector', 'cleaner', 'repair')),
+  added_at timestamptz not null default now()
+);
+
+-- 예시(실제 이메일로 교체해서 넣으세요):
+-- insert into allowed_users (email, name, role) values ('inspector1@example.com', '홍길동', 'inspector');
+
+alter table allowed_users enable row level security;
+-- 이 표는 로그인 콜백(서버, service_role 키)에서만 읽는다 — 브라우저(anon 키)는 접근 불가.
+create policy "service role only" on allowed_users for all using (false) with check (false);

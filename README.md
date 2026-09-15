@@ -12,16 +12,33 @@ Vercel, 시작 비용 0원)으로 옮기는 프로젝트. 아티팩트는 CSP �
 - `lib/unitHistory.json` — 이전 점검 이력 942건 이전 완료(942/948 — 옛 triple 포맷 6건은
   건물/호실 정보가 없어 스킵됨, 필요하면 원본 아티팩트에서 수동 확인 필요)
 - Supabase 연결 확인용 임시 페이지 (`app/page.js`)
+- **로그인(네이버웍스 OAuth)** — 처음엔 "Supabase Auth(이메일 로그인)"으로 적어뒀었는데,
+  점검원들이 이미 쓰는 네이버웍스 계정을 그대로 쓰는 게 훨씬 편해서 이걸로 확정하고 구현함.
+  - `/login` — 로그인 화면, `/api/auth/naverworks` — 네이버웍스 로그인 화면으로 리다이렉트
+  - `/api/auth/naverworks/callback` — 로그인 승인 후 돌아오는 곳: 토큰 교환 → 이메일 확인 →
+    `allowed_users` 표 대조(로그인=신원 확인, 이 표=사용 권한 확인은 별개) → 통과하면 서명된
+    세션 쿠키 발급
+  - `middleware.js` — `/login`·`/api/auth/*`·`/stats*`(기존 비밀번호 잠금 그대로 유지)·
+    `/api/cron/*` 빼고 전체 페이지를 로그인해야 볼 수 있게 막음
+  - `/api/session` — 로그인한 사람 정보(이메일/이름/역할) 조회용, 체크리스트 화면에서
+    담당자 자동입력 등에 쓸 수 있음
+  - `/api/auth/logout` — 로그아웃
+  - ⚠️ **아직 실제 로그인을 끝까지 눌러서 테스트 못 함** — 네이버웍스 OAuth authorize
+    엔드포인트 URL, id_token의 이메일/이름 필드명은 기존에 확인된 토큰 엔드포인트·OIDC 표준
+    관례를 따라 작성한 것이라, 배포 후 실제 로그인 시도에서 처음으로 검증됨. 안 되면
+    `lib/naverworks.js`의 URL/필드명부터 의심할 것.
 
 ## 아직 안 된 것 (다음 단계)
 1. **체크리스트 화면 자체 이식** — 지금 아티팩트(moveout-checklist.html, 2800줄)의 폼 UI·사진
    업로드·표준가 학습 로직·리포트 조립·네이버웍스 게시 준비(postQueue) 로직을 React 컴포넌트로
    옮기는 작업. 로직 자체는 순수 JS라 그대로 옮겨지지만 분량이 커서 별도 작업으로 진행.
-2. **로그인(Auth)** — 지금은 "편집 가능 링크 공유"로 대체하던 접근 제어를 Supabase Auth
-   (이메일 로그인)로 교체.
-3. **네이버웍스 API 연동** — 팀장님이 멤버 계정+OAuth를 발급하면, `app/api/naverworks/` 아래에
-   서버 라우트를 만들어 여기서 직접 게시글을 등록한다(더 이상 브라우저 자동화 불필요, 단
-   인라인 사진 삽입이 API로 되는지는 아직 미확인 — `naverworks-post-format.md` 참고).
+2. **로그인 실사용 테스트 + `allowed_users` 명단 등록** — 팀장님께 받은 점검원 이메일을
+   `supabase/schema.sql` 맨 아래 예시처럼 SQL Editor에서 직접 insert. 관리 화면은 나중에.
+3. **역할별 화면 분리** — 지금은 로그인 여부만 확인하고 역할(admin/inspector/cleaner/repair)은
+   세션에 담아만 두고 화면 분기는 아직 안 함.
+4. **네이버웍스 API 연동(게시)** — 로그인 붙였으니 이제 `app/api/naverworks/`에 게시글 등록
+   라우트를 만들 차례(더 이상 브라우저 자동화 불필요, 단 인라인 사진 삽입이 API로 되는지는
+   아직 미확인 — `naverworks-post-format.md` 참고).
 
 ## 로컬에서 실행하기
 ```bash
@@ -49,9 +66,15 @@ npm run dev
 ### 2. Vercel 배포
 1. 이 프로젝트를 GitHub 저장소로 올린다(아래 git 안내 참고)
 2. https://vercel.com → GitHub 계정으로 가입/로그인 → "Add New Project" → 방금 만든 저장소 선택
-3. **Environment Variables** 에 `.env.local`과 같은 3개 값을 그대로 입력(단, 이 화면에만
-   입력하고 git에는 절대 올리지 않는다)
+3. **Environment Variables** 에 `.env.local`과 같은 값을 그대로 입력(단, 이 화면에만
+   입력하고 git에는 절대 올리지 않는다) — Supabase 3개 + 아래 네이버웍스 로그인용 값들:
+   - `NAVERWORKS_CLIENT_ID`, `NAVERWORKS_CLIENT_SECRET` — dev.worksmobile.com/kr 콘솔에서 확인
+   - `SESSION_SECRET` — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+     로 만든 임의 문자열
 4. Deploy — 몇 분 뒤 `프로젝트명.vercel.app` 주소로 접속 가능
+5. 네이버웍스 개발자 콘솔의 이 앱 설정에서 **Redirect URL**에
+   `https://<배포주소>/api/auth/naverworks/callback` 이 등록돼 있는지 확인(2026-09-15 기준
+   `https://moveout-theta.vercel.app/api/auth/naverworks/callback` 등록 완료)
 
 ### GitHub에 올리기
 ```bash
