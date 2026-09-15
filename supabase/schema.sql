@@ -22,7 +22,7 @@ create table if not exists inspections (
   cleaning_total integer not null default 0,
   cleaning_fee integer not null default 0,
   final_note text not null default '',
-  full jsonb not null default '{}',           -- 전체 state(불러오기용 원본)
+  full_state jsonb not null default '{}',     -- 전체 state(불러오기용 원본) -- "full"은 예약어라 못 씀
   saved_at timestamptz not null default now()
 );
 
@@ -72,23 +72,24 @@ create table if not exists unit_history (
 );
 create index if not exists unit_history_bu_idx on unit_history (building, unit);
 
--- ---- RLS: 로그인한 팀원이면 전부 읽기/쓰기 가능(지금 "편집 가능 링크 공유"와 동일한 수준) ----
+-- ---- RLS ----
+-- 2026-09-15: 처음엔 "로그인한 사람만" 정책으로 걸었는데, 로그인(Auth) 기능 자체를 아직
+-- 안 붙여서 anon 키로 쓰는 모든 요청이 다 막혀 저장이 전부 실패하는 버그로 이어졌다
+-- (실제 배포에서 발견, SQL Editor에서 직접 수동으로 아래 정책으로 교체해 고침).
+-- 지금은 예전 아티팩트의 "편집 가능 링크 공유"와 동일한 수준으로 완전히 열어둔다 —
+-- URL만 알면 로그인 없이도 읽고 쓸 수 있다는 뜻. 다음 단계(네이버웍스 계정으로 로그인)를
+-- 붙이면 이 정책들을 다시 좁혀야 한다.
 alter table inspections enable row level security;
 alter table price_history enable row level security;
 alter table post_queue enable row level security;
 alter table board_history enable row level security;
 alter table unit_history enable row level security;
 
-create policy "authenticated read/write" on inspections
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
-create policy "authenticated read/write" on price_history
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
-create policy "authenticated read/write" on post_queue
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
-create policy "authenticated read/write" on board_history
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
-create policy "authenticated read/write" on unit_history
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "public read/write (no auth yet)" on inspections for all using (true) with check (true);
+create policy "public read/write (no auth yet)" on price_history for all using (true) with check (true);
+create policy "public read/write (no auth yet)" on post_queue for all using (true) with check (true);
+create policy "public read/write (no auth yet)" on board_history for all using (true) with check (true);
+create policy "public read/write (no auth yet)" on unit_history for all using (true) with check (true);
 
 -- ---- Storage: 사진/동영상 버킷 (예전 assets capability) ----
 -- SQL Editor에선 버킷을 못 만듭니다 — Supabase 대시보드 > Storage 에서
