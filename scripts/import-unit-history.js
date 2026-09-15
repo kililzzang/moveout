@@ -6,10 +6,20 @@
 //   2. 이 프로젝트 루트에 .env.local 을 만들고(.env.local.example 참고) 실제 값을 채운다
 //   3. npm install 로 @supabase/supabase-js 를 받는다
 //
-// 실행: node -r dotenv/config scripts/import-unit-history.js dotenv_config_path=.env.local
-// (또는 환경변수를 직접 export 해서 실행해도 됨)
+// 실행: node scripts/import-unit-history.js
+// (dotenv 패키지 없이도 .env.local을 직접 읽는다 — 아래 loadEnvLocal)
 const fs = require('fs');
 const { createClient } = require('@supabase/supabase-js');
+
+function loadEnvLocal() {
+  const path = __dirname + '/../.env.local';
+  if (!fs.existsSync(path)) return;
+  fs.readFileSync(path, 'utf8').split('\n').forEach((line) => {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
+  });
+}
+loadEnvLocal();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
