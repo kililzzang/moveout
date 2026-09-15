@@ -175,6 +175,24 @@ function InfoGrid({ state, setInfo }) {
               </div>
             );
           }
+          if (f.id === 'unit') {
+            // 2026-09-15: 호실은 숫자만 입력되게(박길일님 요청) — type="number"는
+            // 앞자리 0("0503" 등)이 지워지고 스피너 화살표까지 붙어서, 대신 text에
+            // inputMode="numeric"(모바일 숫자 키패드)만 주고 입력값에서 숫자가 아닌
+            // 문자는 그때그때 걸러낸다.
+            return (
+              <div className="field" key={f.id}>
+                <label>{f.label}</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={state.info.unit}
+                  onChange={(e) => setInfo('unit', e.target.value.replace(/[^0-9]/g, ''))}
+                />
+              </div>
+            );
+          }
           return (
             <div className="field" key={f.id}>
               <label>{f.label}</label>
