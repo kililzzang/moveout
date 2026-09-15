@@ -35,7 +35,13 @@ body{background:var(--bg);}
 .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;}
 .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;}
 .field input,.field select{width:100%;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--surface-alt);color:var(--ink);font-size:14px;padding:0 10px;box-sizing:border-box;}
-.history-card{background:var(--accent-bg);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin-bottom:16px;font-size:13px;line-height:1.6;}
+.history-card{background:var(--accent-bg);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;font-size:13px;line-height:1.6;}
+/* 2026-09-15: "이전호실점검내역"·"하자보수완료내역"을 한 화면에 나란히 보여주고
+   그 밑에 비고(의견)란을 붙인 묶음(박길일님 요청). 두 카드는 넓은 화면에서 2열,
+   좁은 화면(모바일)에서는 1열로 쌓인다. */
+.history-panel-wrap{margin-bottom:16px;}
+.history-panel-caption{font-size:12px;color:var(--ink-soft);margin-bottom:8px;}
+.history-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px;}
 .progress-bar{display:flex;align-items:center;gap:12px;margin:6px 0 20px;}
 .progress-track{flex:1;height:8px;border-radius:5px;background:var(--line-soft);overflow:hidden;}
 .progress-fill{height:100%;background:var(--accent);border-radius:5px;}

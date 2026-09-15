@@ -191,18 +191,56 @@ function InfoGrid({ state, setInfo }) {
   );
 }
 
-function HistoryCard({ entry, building, unit }) {
-  if (!entry) return null;
+// 2026-09-15: 박길일님 요청으로 "이전호실점검내역"과 "하자보수완료내역"을 한 화면에
+// 같이 보여주고, 그 밑에 비고(의견)란을 붙였다. 하자보수완료내역은 아직 연동된
+// 데이터가 없어서(추후 데이터 반영 예정) 지금은 안내 문구만 있는 자리표시자다.
+function PrevInspectionCard({ entry }) {
   return (
     <div className="history-card">
-      <b>이전 점검 이력 발견 (최근 1건)</b> — {building} {unit}호 (참고용)
-      <div style={{ marginTop: 8 }}>
-        <b>{entry.d}{entry.co ? ' (퇴실)' : ' (입주 확인)'}</b>
-        <div>
-          {entry.i.map((it, i) => (
-            <div key={i}>· {it[0]}{it[1] ? ' (' + fmtWon(it[1]) + '원)' : ''}</div>
-          ))}
+      <b>이전 호실 점검 내역</b>
+      {entry ? (
+        <div style={{ marginTop: 8 }}>
+          <b>{entry.d}{entry.co ? ' (퇴실)' : ' (입주 확인)'}</b>
+          <div>
+            {entry.i.map((it, i) => (
+              <div key={i}>· {it[0]}{it[1] ? ' (' + fmtWon(it[1]) + '원)' : ''}</div>
+            ))}
+          </div>
         </div>
+      ) : (
+        <div style={{ marginTop: 8, color: 'var(--ink-soft)' }}>이전 점검 기록이 없어요.</div>
+      )}
+    </div>
+  );
+}
+
+function RepairHistoryCard() {
+  return (
+    <div className="history-card">
+      <b>하자보수 완료내역</b>
+      <div style={{ marginTop: 8, color: 'var(--ink-soft)' }}>
+        아직 연동된 데이터가 없어요 — 추후 실제 보수 완료 내역이 여기에 표시될 예정입니다.
+      </div>
+    </div>
+  );
+}
+
+function HistoryPanel({ entry, building, unit, remark, onRemarkChange }) {
+  if (!building || !unit) return null;
+  return (
+    <div className="history-panel-wrap">
+      <div className="history-panel-caption">{building} {unit}호 (참고용)</div>
+      <div className="history-panel">
+        <PrevInspectionCard entry={entry} />
+        <RepairHistoryCard />
+      </div>
+      <div className="memo-card" style={{ marginTop: 0 }}>
+        <label style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>비고(의견)</label>
+        <textarea
+          value={remark}
+          onChange={(e) => onRemarkChange(e.target.value)}
+          placeholder="위 이력을 보고 참고할 의견을 적어주세요."
+        />
       </div>
     </div>
   );
@@ -721,7 +759,13 @@ export default function ChecklistApp() {
       </div>
 
       <InfoGrid state={state} setInfo={setInfo} />
-      <HistoryCard entry={historyEntry} building={state.info.building} unit={state.info.unit} />
+      <HistoryPanel
+        entry={historyEntry}
+        building={state.info.building}
+        unit={state.info.unit}
+        remark={state.historyRemark}
+        onRemarkChange={(v) => setState((s) => ({ ...s, historyRemark: v }))}
+      />
 
       <div className="progress-bar">
         <div className="progress-track">
@@ -798,6 +842,7 @@ export default function ChecklistApp() {
               open: s.open,
               custom: fullState.custom || defaultState().custom,
               finalNote: fullState.finalNote || '',
+              historyRemark: fullState.historyRemark || '',
             }));
             showToast('불러왔습니다');
           }}
