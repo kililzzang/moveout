@@ -9,7 +9,7 @@ import {
 import { fetchLatestHistoryEntry } from '../lib/history';
 import {
   fmtWon, isCleaningCategory, collectIncompleteDefects, buildOfficialFormReport,
-  buildNaverWorksTitle, buildNaverWorksBody, buildAttachmentPlan,
+  buildNaverWorksTitle, buildAttachmentPlan,
 } from '../lib/report';
 import { buildChecklistImageV1, buildChecklistImageV2, buildBlankTemplateImage, buildHistorySummaryImage } from '../lib/canvasImages';
 import { BUILDING_ADDRESS } from '../lib/buildingAddress';
@@ -706,7 +706,10 @@ export default function ChecklistApp() {
         unit: state.info.unit || '',
         date: state.info.date || '',
         title: buildNaverWorksTitle(state),
-        body: buildNaverWorksBody(state, historyEntry),
+        // 2026-09-15: 게시글 구성 개편(박길일님 요청) — 주소/날짜/형태체크/파손사항체크/
+        // 수리내역/기타사항 텍스트 필드(buildNaverWorksBody)는 완전히 삭제. 이제 게시글은
+        // 전부 이미지(이력·체크리스트·하자요약표)와 사진 구분선으로만 구성된다.
+        body: '',
         history_image_url: historyUrl,
         v1_image_url: v1Url,
         v2_image_url: v2Url,
