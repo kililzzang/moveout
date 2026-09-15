@@ -131,12 +131,30 @@ function BuildingField({ value, onChange }) {
 }
 
 function InfoGrid({ state, setInfo }) {
+  // 지번주소는 건물별로 정해진 고정값이라, 건물명이 표에 있는 주소를 갖고 있으면
+  // 자동으로 채우고 수정 못 하게 잠근다(건물명을 바꾸면 그 즉시 따라서 바뀜) —
+  // 표에 아직 주소가 없는 건물이거나 "기타 직접입력"일 때만 직접 타이핑할 수 있다.
+  const addressLocked = !!BUILDING_ADDRESS[state.info.building];
   return (
     <div className="info-card">
       <div className="info-grid">
         {INFO_FIELDS.map((f) => {
           if (f.id === 'building') {
             return <BuildingField key={f.id} value={state.info.building} onChange={(v) => setInfo('building', v)} />;
+          }
+          if (f.id === 'jibunAddress') {
+            return (
+              <div className="field" key={f.id}>
+                <label>{f.label}{addressLocked ? ' (건물별 고정값)' : ''}</label>
+                <input
+                  type="text"
+                  value={state.info.jibunAddress}
+                  readOnly={addressLocked}
+                  onChange={(e) => setInfo('jibunAddress', e.target.value)}
+                  placeholder={addressLocked ? undefined : '아직 등록 안 된 건물 — 직접 입력'}
+                />
+              </div>
+            );
           }
           return (
             <div className="field" key={f.id}>
@@ -276,7 +294,7 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
             {STATUS_LABEL[s]}
           </button>
         ))}
-        <button type="button" className="chip" onClick={() => setNoteOpen((v) => !v)}>비고</button>
+        <button type="button" className="chip" onClick={() => setNoteOpen((v) => !v)}>내용입력</button>
       </div>
 
       {noteOpen && (
@@ -499,8 +517,10 @@ export default function ChecklistApp() {
   function setInfo(id, value) {
     setState((s) => {
       const info = { ...s.info, [id]: value };
-      if (id === 'building' && BUILDING_ADDRESS[value] && !s.info.jibunAddress) {
-        info.jibunAddress = BUILDING_ADDRESS[value];
+      // 지번주소는 건물의 고정값 — 건물명이 바뀌면 무조건 그 건물의 주소로 맞춘다
+      // (표에 없는 건물이면 비워서 직접 입력할 수 있게 둔다).
+      if (id === 'building') {
+        info.jibunAddress = BUILDING_ADDRESS[value] || '';
       }
       return { ...s, info };
     });
