@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { createClient } from '../lib/supabaseClient';
 import { SECTIONS } from '../lib/sections';
 import {
@@ -767,6 +768,8 @@ export default function ChecklistApp() {
           <button type="button" className="btn" onClick={handleReset}>새 점검</button>
           <button type="button" className="btn" onClick={() => downloadFile(buildBlankTemplateImage(SECTIONS))}>오프라인 빈 양식</button>
           <button type="button" className="btn" onClick={() => setCleanupOpen(true)}>정리함</button>
+          <Link href="/repair" target="_blank" className="btn">보수작업 목록</Link>
+          <Link href="/cleaning" target="_blank" className="btn">청소작업 목록</Link>
           <button type="button" className="btn primary" onClick={handleSaveReport}>리포트 저장·복사</button>
         </div>
       </div>
