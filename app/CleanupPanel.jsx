@@ -31,8 +31,21 @@ export default function CleanupPanel({ supabase, onClose, onLoad }) {
   }, [supabase]);
 
   async function handleDelete(id) {
-    if (!confirm('이 점검 기록(공유 저장소)을 삭제할까요? 사진은 마이박스에서 따로 지워야 해요.')) return;
+    if (!confirm('이 점검 기록을 삭제할까요? DB 기록과 Storage에 올라간 사진/체크리스트 이미지까지 함께 지워집니다. 마이박스 원본 사진은 별도로 지워야 해요.')) return;
     setBusyId(id);
+    // Storage의 photos/<id>/ 폴더(체크리스트 V1/V2 이미지 + 업로드된 사진/영상)를 통째로
+    // 비운다 -- 정리함 버튼이 DB 행만 지우고 Storage 파일은 그대로 남기던 빈틈을 메운
+    // 것(자동 Cron 정리와 동일한 방식, route.js 참고).
+    const { data: files } = await supabase.storage.from('photos').list(id);
+    if (files && files.length) {
+      const paths = files.map((f) => id + '/' + f.name);
+      await supabase.storage.from('photos').remove(paths);
+    }
+    const { data: genFiles } = await supabase.storage.from('photos').list(id + '/_generated');
+    if (genFiles && genFiles.length) {
+      const genPaths = genFiles.map((f) => id + '/_generated/' + f.name);
+      await supabase.storage.from('photos').remove(genPaths);
+    }
     await supabase.from('inspections').delete().eq('id', id);
     await supabase.from('post_queue').delete().eq('id', id);
     setRows((r) => r.filter((x) => x.id !== id));
