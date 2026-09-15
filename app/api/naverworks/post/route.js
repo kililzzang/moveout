@@ -7,8 +7,9 @@ import { postToBoard } from '../../../../lib/naverworks';
 // 웹앱A가 "리포트 저장" 시 post_queue에 미리 조립해둔 제목/본문(title, body)을
 // 그대로 가져다가, 지금 로그인한 사람의 네이버웍스 계정으로 실제 게시한다.
 // 지금까지는 "게시글 올려줘"라고 말하면 브라우저 자동화로 처리했는데, 이 라우트가
-// 완성되면 그 대신 버튼 하나로 바로 게시할 수 있다(단, 사진을 본문 중간에 예쁘게
-// 끼워넣는 것까지는 아직 안 됨 — 아래 이미지 링크 방식 참고).
+// 완성되면 그 대신 버튼 하나로 바로 게시할 수 있다. 사진은 postToBoard에서
+// <img> 태그로 본문에 인라인 삽입을 시도한다(2026-09-15 확인: body가 HTML을
+// 지원해서 가능해짐 — lib/naverworks.js 참고).
 //
 // 권한: 지금은 "로그인한 사람이면 누구나 어떤 post_queue든 게시 가능"으로 단순하게
 // 열어뒀다. 나중에 "본인이 담당한 점검만" 같은 제한을 추가하려면 여기에 조건을
@@ -50,18 +51,17 @@ export async function POST(request) {
     return NextResponse.json({ error: '이미 게시된 기록이에요.' }, { status: 409 });
   }
 
-  // 사진/동영상은 본문에 인라인으로 못 넣는다고 가정하고(⚠️ 확인 안 됨), 순서대로
-  // 링크로 풀어서 본문 맨 뒤에 덧붙인다 — "1. 전체점검" 순서 그대로 다음 "2. 하자사진"
-  // 순서로.
-  const imageUrls = [];
-  if (row.v1_image_url) imageUrls.push(`[점검결과표] ${row.v1_image_url}`);
+  // 사진/동영상을 "1. 전체점검" 순서 그대로 다음 "2. 하자사진" 순서로 나열한다.
+  // postToBoard가 사진은 <img>로 진짜 인라인 삽입을 시도하고, 동영상만 링크로 남긴다.
+  const media = [];
+  if (row.v1_image_url) media.push({ label: '점검결과표', url: row.v1_image_url, contentType: 'image/png' });
   (row.general_photos || []).forEach((p) => {
-    if (p?.url) imageUrls.push(`[${p.label || '사진'}] ${p.url}`);
+    if (p?.url) media.push({ label: p.label || '사진', url: p.url, contentType: p.contentType });
   });
-  if (row.v2_image_url) imageUrls.push(`[하자요약표] ${row.v2_image_url}`);
+  if (row.v2_image_url) media.push({ label: '하자요약표', url: row.v2_image_url, contentType: 'image/png' });
   (row.defects || []).forEach((d) => {
     (d.photos || []).forEach((p) => {
-      if (p?.url) imageUrls.push(`[${d.mark || ''} ${d.caption || d.label || ''}] ${p.url}`);
+      if (p?.url) media.push({ label: `${d.mark || ''} ${d.caption || d.label || ''}`.trim(), url: p.url, contentType: p.contentType });
     });
   });
 
@@ -80,7 +80,7 @@ export async function POST(request) {
       boardId,
       title: row.title,
       body: row.body,
-      imageUrls,
+      media,
     });
   } catch (err) {
     console.error('게시 실패:', err);

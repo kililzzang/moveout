@@ -24,9 +24,9 @@ export async function GET(request) {
     const posted = await postToBoard({
       accessToken,
       boardId,
-      title: '[삭제예정] 자동게시 연결 테스트',
-      body: `이 글은 웹앱 자동게시 기능이 실제로 연결되는지 확인하는 테스트입니다.\n확인 후 삭제해주세요.\n\n올린 사람: ${session.name} (${session.email})`,
-      imageUrls: [],
+      title: '[삭제예정] 자동게시 인라인 이미지 테스트',
+      body: `이 글은 사진이 본문에 실제로 인라인으로 삽입되는지 확인하는 테스트입니다.\n아래 이미지가 링크가 아니라 그림으로 바로 보이면 성공입니다.\n확인 후 삭제해주세요.\n\n올린 사람: ${session.name} (${session.email})`,
+      media: [{ label: '테스트 이미지', url: 'https://placehold.co/400x300/png?text=Inline+Test', contentType: 'image/png' }],
     });
     return NextResponse.json({ ok: true, result: posted });
   } catch (err) {
