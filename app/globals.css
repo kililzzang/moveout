@@ -1,0 +1,16 @@
+:root {
+  color-scheme: light;
+  --bg: #EDF0F2;
+  --surface: #FFFFFF;
+  --ink: #15202B;
+  --ink-soft: #57666F;
+  --line: #D3DCE0;
+  --accent: #2A5C8A;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'IBM Plex Sans', system-ui, sans-serif;
+}
