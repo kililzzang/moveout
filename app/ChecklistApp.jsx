@@ -47,7 +47,30 @@ function compressImageIfNeeded(file) {
   });
 }
 
-async function uploadPhoto(supabase, docId, file, isDefect) {
+// 2026-09-16: Supabase Storage(무료 1GB) 대신 Cloudflare R2(무료 10GB, egress
+// 무료)로 옮겼다 — 이전에 결정한 "지운 원본은 되돌릴 수 없다"는 문제 자체를
+// R2가 없애주진 않지만, 용량 여유가 훨씬 커져서 당분간 삭제 걱정을 안 해도 된다.
+// 브라우저가 직접 올리는 방식은 그대로 유지하되, R2 인증키는 서버에만 두고
+// /api/r2/presign에서 짧게 유효한 서명 URL만 받아온다(lib/r2.js 참고).
+async function uploadToR2(path, file) {
+  const presignRes = await fetch('/api/r2/presign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, contentType: file.type }),
+  });
+  const presignData = await presignRes.json().catch(() => ({}));
+  if (!presignRes.ok) throw new Error(presignData.error || '업로드 URL 발급 실패');
+
+  const putRes = await fetch(presignData.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+  if (!putRes.ok) throw new Error('업로드 실패: ' + putRes.status);
+  return presignData.publicUrl;
+}
+
+async function uploadPhoto(docId, file, isDefect) {
   const processed = await compressImageIfNeeded(file);
   if (processed.size > MAX_PHOTO_MB * 1024 * 1024) {
     throw new Error(
@@ -57,19 +80,22 @@ async function uploadPhoto(supabase, docId, file, isDefect) {
   }
   const safeName = file.name.replace(/[^A-Za-z0-9_.\-]/g, '_');
   const path = docId + '/' + uid() + '-' + safeName;
-  const { error } = await supabase.storage.from('photos').upload(path, processed);
-  if (error) throw error;
-  const { data } = supabase.storage.from('photos').getPublicUrl(path);
-  return { id: path, url: data.publicUrl, contentType: processed.type, isDefect: !!isDefect };
+  const url = await uploadToR2(path, processed);
+  return { id: path, url, contentType: processed.type, isDefect: !!isDefect };
 }
 
-async function uploadGeneratedImage(supabase, docId, file) {
+async function uploadGeneratedImage(docId, file) {
+  // R2는 같은 경로(Key)에 PUT하면 그냥 덮어써서, Supabase 때처럼 미리 지울 필요가 없다.
   const path = docId + '/_generated/' + file.name;
-  await supabase.storage.from('photos').remove([path]).catch(() => {});
-  const { error } = await supabase.storage.from('photos').upload(path, file);
-  if (error) throw error;
-  const { data } = supabase.storage.from('photos').getPublicUrl(path);
-  return data.publicUrl;
+  return uploadToR2(path, file);
+}
+
+async function deleteFromR2(path) {
+  await fetch('/api/r2/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  }).catch(() => {});
 }
 
 function downloadFile(file) {
@@ -302,7 +328,7 @@ function DepCalculator({ meta, onApply }) {
   );
 }
 
-function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase, onLightbox, showToast, isLast, onAdvance }) {
+function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, onLightbox, showToast, isLast, onAdvance }) {
   const [noteOpen, setNoteOpen] = useState(!!entry.note);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
@@ -325,7 +351,7 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
       let done = 0;
       for (const file of Array.from(files)) {
         setUploadProgress({ done, total });
-        const p = await uploadPhoto(supabase, docId, file, isDefect);
+        const p = await uploadPhoto(docId, file, isDefect);
         photos = photos.concat([p]);
         onChange({ photos });
         done++;
@@ -348,7 +374,7 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
     const photos = (entry.photos || []).slice();
     const [removed] = photos.splice(idx, 1);
     onChange({ photos });
-    if (removed) supabase.storage.from('photos').remove([removed.id]).catch(() => {});
+    if (removed) deleteFromR2(removed.id);
   }
 
   // 2026-09-15: 단가 학습기능(팀 학습 표준가) 삭제 — 이제 표준가는 SECTIONS에 박힌
@@ -450,7 +476,7 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
   );
 }
 
-function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCustom, docId, supabase, open, onToggle, onLightbox, showToast, onAdvance, sectionRef }) {
+function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCustom, docId, open, onToggle, onLightbox, showToast, onAdvance, sectionRef }) {
   const [newLabel, setNewLabel] = useState('');
   const items = sec.items;
   const checked = items.filter((it, idx) => state.items[sec.id + ':' + idx].status).length;
@@ -476,7 +502,6 @@ function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCus
               entry={state.items[sec.id + ':' + idx]}
               onChange={(patch) => setItem(sec.id, idx, patch)}
               docId={docId}
-              supabase={supabase}
               onLightbox={onLightbox}
               showToast={showToast}
               isLast={idx === lastIdx}
@@ -491,7 +516,6 @@ function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCus
               onChange={(patch) => setCustomItem(sec.id, cidx, patch)}
               onDelete={() => removeCustom(sec.id, cidx)}
               docId={docId}
-              supabase={supabase}
               onLightbox={onLightbox}
               showToast={showToast}
             />
@@ -711,9 +735,9 @@ export default function ChecklistApp() {
       const v1File = buildChecklistImageV1(state, SECTIONS);
       const v2File = buildChecklistImageV2(state, SECTIONS);
       const [historyUrl, v1Url, v2Url] = await Promise.all([
-        uploadGeneratedImage(supabase, docId, historyFile),
-        uploadGeneratedImage(supabase, docId, v1File),
-        uploadGeneratedImage(supabase, docId, v2File),
+        uploadGeneratedImage(docId, historyFile),
+        uploadGeneratedImage(docId, v1File),
+        uploadGeneratedImage(docId, v2File),
       ]);
       setImageStatus({ kind: 'ok', text: '점검결과표 이미지 생성 완료' });
 
@@ -810,7 +834,6 @@ export default function ChecklistApp() {
           addCustom={addCustom}
           removeCustom={removeCustom}
           docId={docId}
-          supabase={supabase}
           open={openSection === sec.id}
           onToggle={() => openSectionAndScroll(openSection === sec.id ? '' : sec.id)}
           onLightbox={setLightboxItem}
