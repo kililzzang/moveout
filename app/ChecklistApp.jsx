@@ -87,6 +87,20 @@ function Toast({ toasts }) {
   );
 }
 
+// 2026-09-15: 네이버웍스 게시 중 로딩 화면(박길일님 요청) — 사진 개수에 따라
+// 게시가 몇 초 걸릴 수 있어서, 버튼 글자만 바뀌는 것보다 화면을 덮는 표시가 더
+// 분명하다. ReportOverlay 위에 한 번 더 겹쳐서 그 아래 버튼도 못 누르게 막는다.
+function PostingOverlay() {
+  return (
+    <div className="posting-overlay">
+      <div className="posting-box">
+        <div className="spinner" />
+        <p>네이버웍스에 게시 중입니다…<br />잠시만 기다려주세요.</p>
+      </div>
+    </div>
+  );
+}
+
 function Lightbox({ item, onClose }) {
   if (!item) return null;
   return (
@@ -788,6 +802,7 @@ export default function ChecklistApp() {
       )}
       <Lightbox item={lightboxItem} onClose={() => setLightboxItem(null)} />
       <Toast toasts={toasts} />
+      {posting && <PostingOverlay />}
     </div>
   );
 }
