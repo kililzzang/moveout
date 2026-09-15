@@ -10,7 +10,6 @@ import {
   fmtWon, isCleaningCategory, collectIncompleteDefects, buildOfficialFormReport,
   buildNaverWorksTitle, buildNaverWorksBody, buildAttachmentPlan,
 } from '../lib/report';
-import { fetchLearnedStats, addPriceHistoryRecords } from '../lib/priceHistory';
 import { buildChecklistImageV1, buildChecklistImageV2, buildBlankTemplateImage } from '../lib/canvasImages';
 import { BUILDING_ADDRESS } from '../lib/buildingAddress';
 import CleanupPanel from './CleanupPanel';
@@ -232,7 +231,7 @@ function DepCalculator({ meta, onApply }) {
   );
 }
 
-function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase, learnedStat, onLightbox, showToast, isLast, onAdvance }) {
+function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase, onLightbox, showToast, isLast, onAdvance }) {
   const [noteOpen, setNoteOpen] = useState(!!entry.note);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
@@ -281,8 +280,10 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
     if (removed) supabase.storage.from('photos').remove([removed.id]).catch(() => {});
   }
 
-  const effectiveStd = learnedStat ? learnedStat.std : (meta && meta.std);
-  const stdIsLearned = learnedStat && learnedStat.count > 0;
+  // 2026-09-15: 단가 학습기능(팀 학습 표준가) 삭제 — 이제 표준가는 SECTIONS에 박힌
+  // 고정 시드값(meta.std) 하나만 쓴다. 대신 게시글의 최종 청구액과 실제 입금액을
+  // 대조해서 정확도를 올리는 방식으로 바꿀 예정(박길일님 요청, 별도 기능으로 진행).
+  const effectiveStd = meta && meta.std;
 
   return (
     <div className="item">
@@ -327,7 +328,6 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
             {effectiveStd ? (
               <button type="button" className="price-hint" onClick={() => onChange({ amount: String(effectiveStd) })}>
                 표준가 적용 {fmtWon(effectiveStd)}원{meta && meta.unit ? ' (' + meta.unit + ')' : ''}
-                {stdIsLearned ? ' · 팀 학습 ' + learnedStat.count + '건' : ''}
               </button>
             ) : null}
           </div>
@@ -351,17 +351,25 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
       <div className="photo-row">
         <PhotoThumbs photos={entry.photos || []} onDelete={deletePhoto} onOpen={onLightbox} />
         <div className="photo-add-row">
-          <input ref={generalInputRef} type="file" accept="image/*,video/*" multiple hidden
-            onChange={(e) => { handleFiles(e.target.files, false); e.target.value = ''; }} />
-          <button type="button" className="btn" disabled={busy} onClick={() => generalInputRef.current.click()}>
-            {uploadProgress ? (uploadProgress.done + 1) + '/' + uploadProgress.total + ' 업로드 중…' : '사진 추가'}
-          </button>
-          {entry.status === 'bad' && (
+          {/* 2026-09-15: 하자로 체크된 항목은 "사진 추가"(일반) 버튼을 없애고 "하자사진
+              추가" 하나만 남긴다 — 예전엔 하자 항목에서도 두 버튼이 같이 떠서, 일반
+              버튼으로 올린 사진이 report.js의 게시글 조립에서 하자 캡션 없이 general
+              쪽에만 실리는 경우가 있었다(박길일님 요청: 하자 체크 항목의 사진/동영상은
+              하자사진에만 들어가야 함). */}
+          {entry.status === 'bad' ? (
             <>
               <input ref={defectInputRef} type="file" accept="image/*,video/*" multiple hidden
                 onChange={(e) => { handleFiles(e.target.files, true); e.target.value = ''; }} />
               <button type="button" className="btn bad" disabled={busy} onClick={() => defectInputRef.current.click()}>
-                하자사진 추가
+                {uploadProgress ? (uploadProgress.done + 1) + '/' + uploadProgress.total + ' 업로드 중…' : '하자사진 추가'}
+              </button>
+            </>
+          ) : (
+            <>
+              <input ref={generalInputRef} type="file" accept="image/*,video/*" multiple hidden
+                onChange={(e) => { handleFiles(e.target.files, false); e.target.value = ''; }} />
+              <button type="button" className="btn" disabled={busy} onClick={() => generalInputRef.current.click()}>
+                {uploadProgress ? (uploadProgress.done + 1) + '/' + uploadProgress.total + ' 업로드 중…' : '사진 추가'}
               </button>
             </>
           )}
@@ -371,7 +379,7 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
   );
 }
 
-function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCustom, docId, supabase, open, onToggle, learnedStats, onLightbox, showToast, onAdvance, sectionRef }) {
+function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCustom, docId, supabase, open, onToggle, onLightbox, showToast, onAdvance, sectionRef }) {
   const [newLabel, setNewLabel] = useState('');
   const items = sec.items;
   const checked = items.filter((it, idx) => state.items[sec.id + ':' + idx].status).length;
@@ -398,7 +406,6 @@ function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCus
               onChange={(patch) => setItem(sec.id, idx, patch)}
               docId={docId}
               supabase={supabase}
-              learnedStat={learnedStats[it.l]}
               onLightbox={onLightbox}
               showToast={showToast}
               isLast={idx === lastIdx}
@@ -414,7 +421,6 @@ function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCus
               onDelete={() => removeCustom(sec.id, cidx)}
               docId={docId}
               supabase={supabase}
-              learnedStat={learnedStats[c.label]}
               onLightbox={onLightbox}
               showToast={showToast}
             />
@@ -473,7 +479,6 @@ export default function ChecklistApp() {
   const [posting, setPosting] = useState(false);
   const [posted, setPosted] = useState(false);
   const [imageStatus, setImageStatus] = useState({ kind: '', text: '' });
-  const [learnedStats, setLearnedStats] = useState({});
   const [lightboxItem, setLightboxItem] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [cleanupOpen, setCleanupOpen] = useState(false);
@@ -486,7 +491,6 @@ export default function ChecklistApp() {
   }
 
   useEffect(() => { saveState(state); }, [state]);
-  useEffect(() => { fetchLearnedStats(supabase).then(setLearnedStats).catch(() => {}); }, [supabase]);
 
   useEffect(() => {
     const b = state.info.building, u = state.info.unit;
@@ -587,7 +591,6 @@ export default function ChecklistApp() {
         }
       });
     });
-    const cleaningFee = parseInt(state.info.cleaningFee, 10) || 0;
     return {
       id: docId,
       building: state.info.building || '',
@@ -597,8 +600,10 @@ export default function ChecklistApp() {
       inspector: state.info.inspector || '',
       items,
       maintenance_total: maintenanceTotal,
-      cleaning_total: cleaningFee + cleaningCategoryTotal,
-      cleaning_fee: cleaningFee,
+      // 2026-09-15: "청소 추가금액" 수동입력 필드는 삭제(박길일님 요청) — cleaning_total은
+      // 이제 청소 카테고리 하자 항목 합산액 그대로다(cleaning_fee 컬럼은 기본값 0으로
+      // Supabase에 남겨두고 여기서는 더 안 채움).
+      cleaning_total: cleaningCategoryTotal,
       final_note: state.finalNote || '',
       full_state: { info: state.info, items: state.items, custom: state.custom, finalNote: state.finalNote },
     };
@@ -627,10 +632,6 @@ export default function ChecklistApp() {
         setSaveStatus({ kind: 'ok', text: '공유저장소 저장 완료' });
       })
       .catch(() => setSaveStatus({ kind: 'fail', text: '저장 실패 — 인터넷 연결 확인 후 다시 시도해주세요' }));
-
-    addPriceHistoryRecords(supabase, state, SECTIONS).then(() => {
-      fetchLearnedStats(supabase).then(setLearnedStats).catch(() => {});
-    });
 
     try {
       const v1File = buildChecklistImageV1(state, SECTIONS);
@@ -688,16 +689,11 @@ export default function ChecklistApp() {
     }
   }
 
-  // "새 점검" — 지우기 전에 (1) 정말 지울지, (2) 이번에 적어둔 하자 금액을 표준가
-  // 학습 데이터로 남길지 두 단계로 묻는다. 두 번째 질문에 "아니오"를 눌러도 지우기
-  // 자체는 그대로 진행된다 — 학습 데이터 보존 여부만 갈릴 뿐.
+  // "새 점검" — 지우기 전에 정말 지울지만 확인한다. 예전엔 여기서 이번에 적어둔 하자
+  // 금액을 "표준가 학습 데이터"로 저장할지 한 번 더 물었는데, 그 단가 학습기능 자체를
+  // 삭제(박길일님 요청)하면서 이 단계도 함께 뺐다.
   function handleReset() {
     if (!confirm('새 점검을 시작할까요? 현재 입력 내용은 지워집니다.')) return;
-    if (badCount > 0) {
-      if (confirm('이번에 적어둔 하자 금액 ' + badCount + '건을 표준가 학습 데이터로 저장할까요?')) {
-        addPriceHistoryRecords(supabase, state, SECTIONS);
-      }
-    }
     setState(defaultState());
     setOpenSection(SECTIONS[0].id);
   }
@@ -732,7 +728,6 @@ export default function ChecklistApp() {
           supabase={supabase}
           open={openSection === sec.id}
           onToggle={() => openSectionAndScroll(openSection === sec.id ? '' : sec.id)}
-          learnedStats={learnedStats}
           onLightbox={setLightboxItem}
           showToast={showToast}
           onAdvance={() => advanceToNextSection(sec.id)}
