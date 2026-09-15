@@ -18,7 +18,9 @@ import './checklist.css';
 
 const STATUS_LABEL = { ok: '정상', bad: '하자', na: '해당없음' };
 const RESP_LABEL = { tenant: '임차인', landlord: '임대인', negotiate: '협의필요' };
-const MAX_PHOTO_MB = 20;
+// 수파베이스 무료 플랜의 파일당 업로드 한도(50MB)에 맞춘 값 — 이보다 크면 애초에
+// 업로드가 안 되므로, 그 전에 안내 문구로 걸러서 사용자가 다시 줄여서 올리게 한다.
+const MAX_PHOTO_MB = 50;
 const IMAGE_MAX_DIM = 1600;
 
 // ---- 사진 업로드(간단 압축 포함) ----
@@ -48,7 +50,10 @@ function compressImageIfNeeded(file) {
 async function uploadPhoto(supabase, docId, file, isDefect) {
   const processed = await compressImageIfNeeded(file);
   if (processed.size > MAX_PHOTO_MB * 1024 * 1024) {
-    throw new Error('파일이 ' + MAX_PHOTO_MB + 'MB를 넘어요: ' + file.name);
+    throw new Error(
+      file.name + ' 용량이 ' + MAX_PHOTO_MB + 'MB를 넘어요. 영상이면 길이를 줄이거나 '
+      + '갤러리 앱에서 압축한 뒤 다시 올려주세요.'
+    );
   }
   const safeName = file.name.replace(/[^A-Za-z0-9_.\-]/g, '_');
   const path = docId + '/' + uid() + '-' + safeName;
@@ -259,7 +264,9 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
       showToast(done + '장 업로드 완료');
       if (isLast && onAdvance) onAdvance();
     } catch (e) {
-      showToast('업로드 실패: ' + e.message);
+      // 안내 문구라 기본 토스트(3.2초)보다 좀 더 오래 보여준다 -- 읽고 다시 시도할
+      // 시간을 준다.
+      showToast('업로드 실패: ' + e.message, 6000);
     } finally {
       setBusy(false);
       setUploadProgress(null);
@@ -465,10 +472,10 @@ export default function ChecklistApp() {
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const sectionRefs = useRef({});
 
-  function showToast(text) {
+  function showToast(text, ms) {
     const id = uid();
     setToasts((t) => t.concat([{ id, text }]));
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), ms || 3200);
   }
 
   useEffect(() => { saveState(state); }, [state]);
