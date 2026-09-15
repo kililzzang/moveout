@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { verifySessionCookieValue, SESSION_COOKIE_NAME } from '../../../../lib/session';
 import { createServiceClient } from '../../../../lib/supabaseServer';
 import { getValidAccessToken } from '../../../../lib/oauthTokens';
-import { postToBoard } from '../../../../lib/naverworks';
+import { postToBoard, getBaseUrl } from '../../../../lib/naverworks';
+import { buildMediaFromRow } from '../../../../lib/postMedia';
 
 // 웹앱A가 "리포트 저장" 시 post_queue에 미리 조립해둔 제목/본문(title, body)을
 // 그대로 가져다가, 지금 로그인한 사람의 네이버웍스 계정으로 실제 게시한다.
@@ -51,19 +52,10 @@ export async function POST(request) {
     return NextResponse.json({ error: '이미 게시된 기록이에요.' }, { status: 409 });
   }
 
-  // 사진/동영상을 "1. 전체점검" 순서 그대로 다음 "2. 하자사진" 순서로 나열한다.
+  // 사진/동영상을 "1. 전체점검" 순서 그대로 다음 "2. 하자사진" 순서로 나열한다(순서
+  // 조립 로직은 lib/postMedia.js — 갤러리 페이지도 똑같은 순서를 써야 링크가 안 어긋남).
   // postToBoard가 사진은 <img>로 진짜 인라인 삽입을 시도하고, 동영상만 링크로 남긴다.
-  const media = [];
-  if (row.v1_image_url) media.push({ label: '점검결과표', url: row.v1_image_url, contentType: 'image/png' });
-  (row.general_photos || []).forEach((p) => {
-    if (p?.url) media.push({ label: p.label || '사진', url: p.url, contentType: p.contentType });
-  });
-  if (row.v2_image_url) media.push({ label: '하자요약표', url: row.v2_image_url, contentType: 'image/png' });
-  (row.defects || []).forEach((d) => {
-    (d.photos || []).forEach((p) => {
-      if (p?.url) media.push({ label: `${d.mark || ''} ${d.caption || d.label || ''}`.trim(), url: p.url, contentType: p.contentType });
-    });
-  });
+  const media = buildMediaFromRow(row);
 
   let accessToken;
   try {
@@ -73,6 +65,10 @@ export async function POST(request) {
     return NextResponse.json({ error: `토큰 확인 실패: ${err.message}` }, { status });
   }
 
+  // 사진을 탭했을 때 한 장짜리 브라우저 뷰가 아니라, 이 점검 건의 전체 사진/동영상을
+  // 스와이프로 넘겨볼 수 있는 갤러리 페이지로 연결한다(박길일님 요청).
+  const galleryUrl = `${getBaseUrl()}/gallery/${encodeURIComponent(postId)}`;
+
   let posted;
   try {
     posted = await postToBoard({
@@ -81,6 +77,7 @@ export async function POST(request) {
       title: row.title,
       body: row.body,
       media,
+      galleryUrl,
     });
   } catch (err) {
     console.error('게시 실패:', err);

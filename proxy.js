@@ -5,6 +5,9 @@ import { verifySessionCookieValue, SESSION_COOKIE_NAME } from './lib/session';
 // - /login, /api/auth/* : 로그인 자체를 하는 경로라 당연히 열어둠
 // - /stats* : 예전부터 자체 비밀번호(stats_auth 쿠키)로 따로 잠겨 있음, 그대로 둠
 // - /api/cron/* : Vercel Cron이 호출(로그인 쿠키 없음), user-agent로 자체 확인함
+// - /gallery/* : 게시글 사진을 탭하면 열리는 스와이프 갤러리 — 사진 원본 URL 자체가
+//   이미 Supabase의 public 버킷이라 로그인 없이도 열람 가능했으므로, 이 페이지도
+//   같은 수준으로 공개해둔다(2026-09-15, 박길일님 요청으로 신설)
 // - Next.js 정적 자원(_next 등)
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
@@ -15,6 +18,7 @@ export async function proxy(request) {
     pathname.startsWith('/stats') ||
     pathname.startsWith('/api/stats-auth') ||
     pathname.startsWith('/api/cron/') ||
+    pathname.startsWith('/gallery/') ||
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico';
 
