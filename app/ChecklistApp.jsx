@@ -11,7 +11,7 @@ import {
   fmtWon, isCleaningCategory, collectIncompleteDefects, buildOfficialFormReport,
   buildNaverWorksTitle, buildNaverWorksBody, buildAttachmentPlan,
 } from '../lib/report';
-import { buildChecklistImageV1, buildChecklistImageV2, buildBlankTemplateImage } from '../lib/canvasImages';
+import { buildChecklistImageV1, buildChecklistImageV2, buildBlankTemplateImage, buildHistorySummaryImage } from '../lib/canvasImages';
 import { BUILDING_ADDRESS } from '../lib/buildingAddress';
 import CleanupPanel from './CleanupPanel';
 import './checklist.css';
@@ -687,9 +687,13 @@ export default function ChecklistApp() {
       .catch(() => setSaveStatus({ kind: 'fail', text: '저장 실패 — 인터넷 연결 확인 후 다시 시도해주세요' }));
 
     try {
+      // 2026-09-15: 게시글 맨 앞에 들어갈 "이전호실점검내역/하자보수완료내역/비고" 이미지
+      // (박길일님 요청) — v1/v2와 같은 방식으로 만들어서 post_queue에 URL만 저장해둔다.
+      const historyFile = buildHistorySummaryImage(state, historyEntry);
       const v1File = buildChecklistImageV1(state, SECTIONS);
       const v2File = buildChecklistImageV2(state, SECTIONS);
-      const [v1Url, v2Url] = await Promise.all([
+      const [historyUrl, v1Url, v2Url] = await Promise.all([
+        uploadGeneratedImage(supabase, docId, historyFile),
         uploadGeneratedImage(supabase, docId, v1File),
         uploadGeneratedImage(supabase, docId, v2File),
       ]);
@@ -703,6 +707,7 @@ export default function ChecklistApp() {
         date: state.info.date || '',
         title: buildNaverWorksTitle(state),
         body: buildNaverWorksBody(state, historyEntry),
+        history_image_url: historyUrl,
         v1_image_url: v1Url,
         v2_image_url: v2Url,
         general_photos: plan.general,

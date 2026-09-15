@@ -3,7 +3,7 @@ import { verifySessionCookieValue, SESSION_COOKIE_NAME } from '../../../../lib/s
 import { createServiceClient } from '../../../../lib/supabaseServer';
 import { getValidAccessToken } from '../../../../lib/oauthTokens';
 import { postToBoard, getBaseUrl } from '../../../../lib/naverworks';
-import { buildMediaFromRow } from '../../../../lib/postMedia';
+import { buildMediaFromRow, buildDefectSummaryLines } from '../../../../lib/postMedia';
 
 // 웹앱A가 "리포트 저장" 시 post_queue에 미리 조립해둔 제목/본문(title, body)을
 // 그대로 가져다가, 지금 로그인한 사람의 네이버웍스 계정으로 실제 게시한다.
@@ -56,6 +56,9 @@ export async function POST(request) {
   // 조립 로직은 lib/postMedia.js — 갤러리 페이지도 똑같은 순서를 써야 링크가 안 어긋남).
   // postToBoard가 사진은 <img>로 진짜 인라인 삽입을 시도하고, 동영상만 링크로 남긴다.
   const media = buildMediaFromRow(row);
+  // "-------------------하자사진" 구분선 바로 밑에 나열할 텍스트 목록(예: "①계량기
+  // 파손 40000원") — lib/naverworks.js의 postToBoard가 defect 그룹 첫 항목 앞에 붙인다.
+  const defectSummaryLines = buildDefectSummaryLines(row);
 
   let accessToken;
   try {
@@ -78,6 +81,7 @@ export async function POST(request) {
       body: row.body,
       media,
       galleryUrl,
+      defectSummaryLines,
     });
   } catch (err) {
     console.error('게시 실패:', err);

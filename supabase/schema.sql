@@ -44,6 +44,7 @@ create table if not exists post_queue (
   date text not null default '',
   title text not null default '',
   body text not null default '',
+  history_image_url text,           -- 이전호실점검내역/하자보수완료내역/비고 이미지(2026-09-15 추가)
   v1_image_url text,
   v2_image_url text,
   general_photos jsonb not null default '[]',
@@ -52,6 +53,10 @@ create table if not exists post_queue (
   queued_at timestamptz not null default now(),
   posted_at timestamptz
 );
+
+-- 이미 만들어둔 post_queue 표에는 위 컬럼이 없으니(테이블이 이미 있으면 create table
+-- if not exists는 컬럼을 추가해주지 않는다), 기존 배포에도 안전하게 추가한다.
+alter table post_queue add column if not exists history_image_url text;
 
 -- ---- 게시판 메타데이터 (예전 boardHistory 컬렉션) — 크롤링해둔 기존 글 번호 매핑 ----
 create table if not exists board_history (
