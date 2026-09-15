@@ -1,5 +1,6 @@
 import { createServiceClient } from '../../../lib/supabaseServer';
 import { buildMediaFromRow } from '../../../lib/postMedia';
+import Gallery from './Gallery';
 
 // 게시글에서 사진을 탭했을 때 열리는 스와이프 갤러리 페이지 — Supabase Storage
 // 원본 파일 한 장만 여는 브라우저 뷰 대신, 이 점검 건의 전체 사진/동영상을 좌우로
@@ -10,6 +11,9 @@ import { buildMediaFromRow } from '../../../lib/postMedia';
 // 어차피 사진 원본 URL 자체가 Supabase의 public 버킷이라 이미 로그인 없이 열람
 // 가능했고, 이 페이지는 그 사진들을 더 보기 편하게 모아서 보여주는 것뿐이라 굳이
 // 로그인을 강제할 이유가 없다.
+//
+// 실제 스와이프·좌우 버튼 조작은 클라이언트 상태(현재 위치 등)가 필요해서 Gallery.jsx
+// ('use client')로 뺐다 — 이 파일은 서버에서 데이터만 조회해서 넘겨준다.
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata() {
@@ -32,7 +36,8 @@ export default async function GalleryPage({ params }) {
   }
 
   const media = buildMediaFromRow(row);
-  const heading = [row.building, row.unit ? row.unit + '호' : ''].filter(Boolean).join(' ');
+  const heading = [row.building, row.unit ? row.unit + '호' : ''].filter(Boolean).join(' ')
+    + (row.date ? ' · ' + row.date : '');
 
   if (!media.length) {
     return (
@@ -44,54 +49,9 @@ export default async function GalleryPage({ params }) {
 
   return (
     <div style={pageStyle}>
-      <div style={headerStyle}>
-        {heading || '점검 사진'}{row.date ? ' · ' + row.date : ''}
-      </div>
-      <div id="gallery-scroller" style={scrollerStyle}>
-        {media.map((m, idx) => {
-          const isVideo = (m.contentType || '').indexOf('video') === 0;
-          return (
-            <div key={idx} id={'p' + idx} style={slideStyle}>
-              {isVideo ? (
-                <video src={m.url} controls style={mediaStyle} />
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.url} alt={m.label || ''} style={mediaStyle} />
-              )}
-              <div style={captionStyle}>
-                {idx + 1} / {media.length}{m.label ? ' · ' + m.label : ''}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {/* 가로 스크롤 컨테이너 안의 요소는 브라우저마다 URL 프래그먼트(#p3) 이동이
-          기본으로 안 먹히는 경우가 있어서, 로드 시 직접 한 번 더 스크롤 위치를 맞춘다. */}
-      <script
-        dangerouslySetInnerHTML={{
-          __html:
-            "(function(){var h=window.location.hash;if(!h)return;var el=document.getElementById(h.slice(1));" +
-            "if(el)el.scrollIntoView({inline:'start',block:'nearest'});})();",
-        }}
-      />
+      <Gallery media={media} heading={heading || '점검 사진'} />
     </div>
   );
 }
 
 const pageStyle = { background: '#0b0b0c', minHeight: '100dvh' };
-const headerStyle = {
-  position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1,
-  padding: '10px 16px', color: '#fff', fontSize: 13,
-  background: 'linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0))',
-};
-const scrollerStyle = {
-  display: 'flex', overflowX: 'auto', scrollSnapType: 'x mandatory',
-  WebkitOverflowScrolling: 'touch', height: '100dvh',
-};
-const slideStyle = {
-  flex: '0 0 100%', scrollSnapAlign: 'start', display: 'flex',
-  flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-  padding: '48px 12px 24px', boxSizing: 'border-box',
-};
-const mediaStyle = { maxWidth: '100%', maxHeight: '78dvh', objectFit: 'contain' };
-const captionStyle = { color: '#fff', fontSize: 13, marginTop: 10, textAlign: 'center' };
