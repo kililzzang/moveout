@@ -11,16 +11,15 @@ import {
   buildNaverWorksTitle, buildNaverWorksBody, buildAttachmentPlan,
 } from '../lib/report';
 import { fetchLearnedStats, addPriceHistoryRecords } from '../lib/priceHistory';
-import { buildChecklistImageV1, buildChecklistImageV2 } from '../lib/canvasImages';
-// 건물명을 고르면 지번주소를 자동으로 채워준다 — 아는 만큼만 채워둔 표, 없는 건물은
-// 그대로 직접 입력해야 한다(빈 문자열이면 자동채우기를 안 한다).
+import { buildChecklistImageV1, buildChecklistImageV2, buildBlankTemplateImage } from '../lib/canvasImages';
 import { BUILDING_ADDRESS } from '../lib/buildingAddress';
+import CleanupPanel from './CleanupPanel';
 import './checklist.css';
 
 const STATUS_LABEL = { ok: '정상', bad: '하자', na: '해당없음' };
 const RESP_LABEL = { tenant: '임차인', landlord: '임대인', negotiate: '협의필요' };
 const MAX_PHOTO_MB = 20;
-const IMAGE_MAX_DIM = 1600; // 이 크기보다 큰 사진은 업로드 전에 줄여서 20MB 제한에 덜 걸리게 한다
+const IMAGE_MAX_DIM = 1600;
 
 // ---- 사진 업로드(간단 압축 포함) ----
 function compressImageIfNeeded(file) {
@@ -68,7 +67,14 @@ async function uploadGeneratedImage(supabase, docId, file) {
   return data.publicUrl;
 }
 
-// ---- Toast ----
+function downloadFile(file) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url; a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 function Toast({ toasts }) {
   return (
     <div className="toast-stack">
@@ -77,7 +83,6 @@ function Toast({ toasts }) {
   );
 }
 
-// ---- Lightbox ----
 function Lightbox({ item, onClose }) {
   if (!item) return null;
   return (
@@ -93,26 +98,45 @@ function Lightbox({ item, onClose }) {
   );
 }
 
+// 건물명 드롭박스 + "기타(직접입력)" — moveout-checklist.html의 buildBuildingField와 동일한 UX.
+function BuildingField({ value, onChange }) {
+  const isKnown = KNOWN_BUILDINGS.includes(value);
+  const isOther = value !== '' && !isKnown;
+  const [showOther, setShowOther] = useState(isOther);
+
+  return (
+    <div className="field building-field">
+      <label>건물명</label>
+      <select
+        value={showOther ? '__other__' : value}
+        onChange={(e) => {
+          if (e.target.value === '__other__') { setShowOther(true); onChange(''); }
+          else { setShowOther(false); onChange(e.target.value); }
+        }}
+      >
+        <option value="">선택하세요</option>
+        {KNOWN_BUILDINGS.map((b) => <option value={b} key={b}>{b}</option>)}
+        <option value="__other__">기타 (직접입력)</option>
+      </select>
+      {showOther && (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="건물명을 직접 입력하세요"
+        />
+      )}
+    </div>
+  );
+}
+
 function InfoGrid({ state, setInfo }) {
   return (
     <div className="info-card">
       <div className="info-grid">
         {INFO_FIELDS.map((f) => {
           if (f.id === 'building') {
-            return (
-              <div className="field" key={f.id}>
-                <label>{f.label}</label>
-                <input
-                  list="known-buildings"
-                  value={state.info.building}
-                  onChange={(e) => setInfo('building', e.target.value)}
-                  placeholder="선택 또는 직접입력"
-                />
-                <datalist id="known-buildings">
-                  {KNOWN_BUILDINGS.map((b) => <option value={b} key={b} />)}
-                </datalist>
-              </div>
-            );
+            return <BuildingField key={f.id} value={state.info.building} onChange={(v) => setInfo('building', v)} />;
           }
           return (
             <div className="field" key={f.id}>
@@ -185,7 +209,7 @@ function DepCalculator({ meta, onApply }) {
   );
 }
 
-function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase, learnedStat, onLightbox, showToast }) {
+function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase, learnedStat, onLightbox, showToast, isLast, onAdvance }) {
   const [noteOpen, setNoteOpen] = useState(!!entry.note);
   const [busy, setBusy] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(null);
@@ -193,6 +217,9 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
   const defectInputRef = useRef(null);
 
   function setStatus(status) {
+    // 마지막 항목은 상태만 바꾸고는 다음 섹션으로 자동 넘어가지 않는다 — 사진을 아직
+    // 안 올렸을 수 있어서(사진 업로드가 끝나야 넘어감). 사진이 필요 없으면 사용자가
+    // 직접 스크롤하면 된다.
     onChange({ status: status === entry.status ? '' : status });
   }
 
@@ -212,6 +239,7 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
         setUploadProgress({ done, total });
       }
       showToast(done + '장 업로드 완료');
+      if (isLast && onAdvance) onAdvance();
     } catch (e) {
       showToast('업로드 실패: ' + e.message);
     } finally {
@@ -318,15 +346,16 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
   );
 }
 
-function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCustom, docId, supabase, open, onToggle, learnedStats, onLightbox, showToast }) {
+function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCustom, docId, supabase, open, onToggle, learnedStats, onLightbox, showToast, onAdvance, sectionRef }) {
   const [newLabel, setNewLabel] = useState('');
   const items = sec.items;
   const checked = items.filter((it, idx) => state.items[sec.id + ':' + idx].status).length;
   const hasBad = items.some((it, idx) => state.items[sec.id + ':' + idx].status === 'bad')
     || (state.custom[sec.id] || []).some((c) => c.status === 'bad');
+  const lastIdx = items.length - 1;
 
   return (
-    <div className="section">
+    <div className="section" ref={sectionRef}>
       <button type="button" className="section-head" onClick={onToggle}>
         {sec.title}
         {hasBad && <span className="section-flag">하자 있음</span>}
@@ -347,6 +376,8 @@ function SectionBlock({ sec, state, setItem, setCustomItem, addCustom, removeCus
               learnedStat={learnedStats[it.l]}
               onLightbox={onLightbox}
               showToast={showToast}
+              isLast={idx === lastIdx}
+              onAdvance={onAdvance}
             />
           ))}
           {(state.custom[sec.id] || []).map((c, cidx) => (
@@ -397,7 +428,12 @@ function ReportOverlay({ text, saveStatus, postStatus, imageStatus, onClose, onC
 
 export default function ChecklistApp() {
   const supabase = useMemo(() => createClient(), []);
-  const [state, setState] = useState(defaultState);
+  // localStorage 읽기를 useState의 지연 초기값으로 처리 — 예전엔 마운트 후
+  // useEffect에서 비동기로 불러오다가, 그 사이(초기 렌더의 빈 state)에 저장 이펙트가
+  // 먼저 한 번 실행되면서 순간적으로 localStorage를 빈 값으로 덮어쓰는 경합이 있었다
+  // (실제로 새로고침 후 입력이 사라지는 현상으로 나타남). 지연 초기값은 첫 렌더 때
+  // 동기적으로 실행되어 그 경합 자체가 생기지 않는다.
+  const [state, setState] = useState(() => loadState());
   const [openSection, setOpenSection] = useState(SECTIONS[0].id);
   const [historyEntry, setHistoryEntry] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
@@ -408,6 +444,8 @@ export default function ChecklistApp() {
   const [learnedStats, setLearnedStats] = useState({});
   const [lightboxItem, setLightboxItem] = useState(null);
   const [toasts, setToasts] = useState([]);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const sectionRefs = useRef({});
 
   function showToast(text) {
     const id = uid();
@@ -415,7 +453,6 @@ export default function ChecklistApp() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
   }
 
-  useEffect(() => { setState(loadState()); }, []);
   useEffect(() => { saveState(state); }, [state]);
   useEffect(() => { fetchLearnedStats(supabase).then(setLearnedStats).catch(() => {}); }, [supabase]);
 
@@ -443,10 +480,25 @@ export default function ChecklistApp() {
     });
   });
 
+  // 섹션을 열 때(수동 클릭이든 자동 진행이든) 화면을 그 섹션 맨 위로 스크롤한다 —
+  // 새로 열린 섹션의 "끝부분"이 아니라 "시작"이 보여야 한다는 요청 반영.
+  function openSectionAndScroll(id) {
+    setOpenSection(id);
+    requestAnimationFrame(() => {
+      const el = sectionRefs.current[id];
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  function advanceToNextSection(fromId) {
+    const idx = SECTIONS.findIndex((s) => s.id === fromId);
+    const next = SECTIONS[idx + 1];
+    if (next) openSectionAndScroll(next.id);
+  }
+
   function setInfo(id, value) {
     setState((s) => {
       const info = { ...s.info, [id]: value };
-      // 건물명을 고르는 순간 지번주소를 자동으로 채운다 — 이미 직접 적어둔 주소는 덮어쓰지 않는다.
       if (id === 'building' && BUILDING_ADDRESS[value] && !s.info.jibunAddress) {
         info.jibunAddress = BUILDING_ADDRESS[value];
       }
@@ -577,6 +629,20 @@ export default function ChecklistApp() {
     }
   }
 
+  // "새 점검" — 지우기 전에 (1) 정말 지울지, (2) 이번에 적어둔 하자 금액을 표준가
+  // 학습 데이터로 남길지 두 단계로 묻는다. 두 번째 질문에 "아니오"를 눌러도 지우기
+  // 자체는 그대로 진행된다 — 학습 데이터 보존 여부만 갈릴 뿐.
+  function handleReset() {
+    if (!confirm('새 점검을 시작할까요? 현재 입력 내용은 지워집니다.')) return;
+    if (badCount > 0) {
+      if (confirm('이번에 적어둔 하자 금액 ' + badCount + '건을 표준가 학습 데이터로 저장할까요?')) {
+        addPriceHistoryRecords(supabase, state, SECTIONS);
+      }
+    }
+    setState(defaultState());
+    setOpenSection(SECTIONS[0].id);
+  }
+
   return (
     <div className="wrap">
       <div className="masthead">
@@ -606,10 +672,12 @@ export default function ChecklistApp() {
           docId={docId}
           supabase={supabase}
           open={openSection === sec.id}
-          onToggle={() => setOpenSection(openSection === sec.id ? '' : sec.id)}
+          onToggle={() => openSectionAndScroll(openSection === sec.id ? '' : sec.id)}
           learnedStats={learnedStats}
           onLightbox={setLightboxItem}
           showToast={showToast}
+          onAdvance={() => advanceToNextSection(sec.id)}
+          sectionRef={(el) => { sectionRefs.current[sec.id] = el; }}
         />
       ))}
 
@@ -628,7 +696,9 @@ export default function ChecklistApp() {
           <span>예상 금액 <b className="s-amount">{fmtWon(badTotal)}원</b></span>
         </div>
         <div className="footer-actions">
-          <button type="button" className="btn" onClick={() => { if (confirm('새 점검을 시작할까요? 현재 입력 내용은 지워집니다.')) setState(defaultState()); }}>새 점검</button>
+          <button type="button" className="btn" onClick={handleReset}>새 점검</button>
+          <button type="button" className="btn" onClick={() => downloadFile(buildBlankTemplateImage(SECTIONS))}>오프라인 빈 양식</button>
+          <button type="button" className="btn" onClick={() => setCleanupOpen(true)}>정리함</button>
           <button type="button" className="btn primary" onClick={handleSaveReport}>리포트 저장·복사</button>
         </div>
       </div>
@@ -641,6 +711,22 @@ export default function ChecklistApp() {
           imageStatus={imageStatus}
           onClose={() => setReportOpen(false)}
           onCopyAgain={() => navigator.clipboard?.writeText(reportText)}
+        />
+      )}
+      {cleanupOpen && (
+        <CleanupPanel
+          supabase={supabase}
+          onClose={() => setCleanupOpen(false)}
+          onLoad={(fullState) => {
+            setState((s) => ({
+              info: { ...defaultState().info, ...fullState.info },
+              items: { ...defaultState().items, ...fullState.items },
+              open: s.open,
+              custom: fullState.custom || defaultState().custom,
+              finalNote: fullState.finalNote || '',
+            }));
+            showToast('불러왔습니다');
+          }}
         />
       )}
       <Lightbox item={lightboxItem} onClose={() => setLightboxItem(null)} />

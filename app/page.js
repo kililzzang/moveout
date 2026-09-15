@@ -1,8 +1,12 @@
-import ChecklistApp from './ChecklistApp';
+'use client';
+import dynamic from 'next/dynamic';
 
-// Supabase 클라이언트가 브라우저에서만 만들어지도록(빌드 시점 정적 프리렌더를 건너뛰게)
-// 강제한다 — 빌드 서버엔 Supabase 키가 없어도 되고, 실제 배포에선 Vercel 환경변수가 있다.
-export const dynamic = 'force-dynamic';
+// 이 체크리스트는 localStorage·File API·canvas·Supabase 브라우저 클라이언트에 전부
+// 의존하는, 완전히 클라이언트 전용 화면이다. 서버 렌더링(SSR)을 시도하면 서버에는
+// localStorage가 없어 빈 상태로 렌더되고, 클라이언트가 실제 저장된 값으로 다시
+// 그리면서 "Hydration failed" 오류가 났다(실제로 재현·확인함). ssr:false로 아예
+// 서버 렌더링을 건너뛰어 이 불일치 자체가 생기지 않게 한다.
+const ChecklistApp = dynamic(() => import('./ChecklistApp'), { ssr: false });
 
 export default function Home() {
   return <ChecklistApp />;
