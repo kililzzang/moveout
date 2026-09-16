@@ -553,7 +553,16 @@ export default function ChecklistApp() {
   const [lightboxItem, setLightboxItem] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [isDev, setIsDev] = useState(false);
   const sectionRefs = useRef({});
+
+  // 2026-09-16: 아직 실사용 준비 안 된 기능(보수·청소작업 목록, 내 작업 배정)
+  // 링크는 개발자 계정(allowed_users.is_dev)한테만 보여준다 — proxy.js가 접근
+  // 자체는 이미 막아주지만, 막힌 링크가 버튼으로 버젓이 보이면 실제 점검원들이
+  // 눌러보고 헷갈릴 수 있어서 아예 숨긴다(박길일님 요청).
+  useEffect(() => {
+    fetch('/api/session').then((r) => r.json()).then((s) => setIsDev(!!(s.loggedIn && s.is_dev))).catch(() => {});
+  }, []);
 
   function showToast(text, ms) {
     const id = uid();
@@ -838,9 +847,13 @@ export default function ChecklistApp() {
           <button type="button" className="btn" onClick={handleReset}>새 점검</button>
           <button type="button" className="btn" onClick={() => downloadFile(buildBlankTemplateImage(SECTIONS))}>오프라인 빈 양식</button>
           <button type="button" className="btn" onClick={() => setCleanupOpen(true)}>정리함</button>
-          <Link href="/repair" target="_blank" className="btn">보수작업 목록</Link>
-          <Link href="/cleaning" target="_blank" className="btn">청소작업 목록</Link>
-          <Link href="/assignments" target="_blank" className="btn">내 작업 배정</Link>
+          {isDev && (
+            <>
+              <Link href="/repair" target="_blank" className="btn">보수작업 목록</Link>
+              <Link href="/cleaning" target="_blank" className="btn">청소작업 목록</Link>
+              <Link href="/assignments" target="_blank" className="btn">내 작업 배정</Link>
+            </>
+          )}
           <button type="button" className="btn primary" onClick={handleSaveReport}>리포트 저장·복사</button>
         </div>
       </div>

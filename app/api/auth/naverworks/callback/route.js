@@ -46,7 +46,7 @@ export async function GET(request) {
   const supabase = createServiceClient();
   const { data: allowedUser, error } = await supabase
     .from('allowed_users')
-    .select('email, name, role')
+    .select('email, name, role, is_dev')
     .eq('email', email)
     .maybeSingle();
 
@@ -72,6 +72,11 @@ export async function GET(request) {
     email: allowedUser.email,
     name: allowedUser.name || name,
     role: allowedUser.role,
+    // 2026-09-16: proxy.js가 개발 중인 기능(/repair, /cleaning, /assignments)을
+    // 이 값으로만 막는다 — allowed_users.is_dev가 true인 계정만 로그인 시점에
+    // 이 플래그를 세션에 실어간다(박길일님 요청: 실사용 전인 기능들이 실제
+    // 점검원들 눈에 안 띄게).
+    is_dev: !!allowedUser.is_dev,
   });
 
   const res = NextResponse.redirect(`${baseUrl}/`);

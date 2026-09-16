@@ -109,7 +109,13 @@ create table if not exists allowed_users (
   email text primary key,
   name text not null default '',
   role text not null default 'inspector' check (role in ('admin', 'inspector', 'cleaner', 'repair')),
-  added_at timestamptz not null default now()
+  added_at timestamptz not null default now(),
+  -- 2026-09-16 추가: 아직 실사용 준비가 안 된 기능(/repair, /cleaning, /assignments)을
+  -- 이 값이 true인 계정만 볼 수 있게 proxy.js가 막는다 — 실제 호실점검원들이 개발
+  -- 중인 화면을 보고 혼란스러워하지 않게 하기 위함(박길일님 요청). 기존 표에 이미
+  -- 행이 있으면 이 컬럼 추가 후 본인 이메일 행만 따로 true로 바꿔야 한다:
+  --   update allowed_users set is_dev = true where email = '본인 이메일';
+  is_dev boolean not null default false
 );
 
 -- 예시(실제 이메일로 교체해서 넣으세요):
@@ -118,6 +124,14 @@ create table if not exists allowed_users (
 alter table allowed_users enable row level security;
 -- 이 표는 로그인 콜백(서버, service_role 키)에서만 읽는다 — 브라우저(anon 키)는 접근 불가.
 create policy "service role only" on allowed_users for all using (false) with check (false);
+
+-- 이미 만들어진 allowed_users 표에는 위 CREATE TABLE의 새 컬럼 정의가 적용되지
+-- 않으므로(테이블이 이미 있으면 CREATE TABLE 자체가 통째로 스킵됨), 기존
+-- 배포에도 반영되도록 별도로 ALTER TABLE을 한 번 더 실행한다 — 이미 컬럼이
+-- 있으면 아무 일도 안 하니 여러 번 실행해도 안전하다.
+alter table allowed_users add column if not exists is_dev boolean not null default false;
+-- 본인 이메일 행만 true로 바꿔서 개발자 모드로 들어갈 수 있게 하세요:
+--   update allowed_users set is_dev = true where email = '본인 이메일';
 
 -- ---- 로그인 토큰 저장 (자동게시용, 2026-09-15 추가) ----
 -- 점검원이 로그인할 때 받은 access_token·refresh_token을 저장해뒀다가, 나중에

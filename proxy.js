@@ -9,6 +9,14 @@ import { verifySessionCookieValue, SESSION_COOKIE_NAME } from './lib/session';
 //   이미 Supabase의 public 버킷이라 로그인 없이도 열람 가능했으므로, 이 페이지도
 //   같은 수준으로 공개해둔다(2026-09-15, 박길일님 요청으로 신설)
 // - Next.js 정적 자원(_next 등)
+// 2026-09-16: 호실점검 클립보드(체크리스트, "/")는 실제 점검원들이 매일 쓰는
+// 화면이라 지금처럼 그대로 두고, 그 외에 새로 만들고 있는 기능들(/repair,
+// /cleaning, /assignments — 아직 실사용 준비 안 됨)은 개발자(박길일님)만 들어가
+// 볼 수 있게 막는다(박길일님 요청: "작업하면서 호실점검원들이 혼란이 있으면
+// 안 됌"). allowed_users.is_dev가 true인 계정으로 로그인했을 때만 세션 쿠키에
+// is_dev가 실려서, 그 값으로 판단한다 — DB를 매번 다시 조회하지 않는다.
+const DEV_ONLY_PATHS = ['/repair', '/cleaning', '/assignments'];
+
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
 
@@ -30,6 +38,10 @@ export async function proxy(request) {
   if (!session) {
     const loginUrl = new URL('/login', request.url);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (DEV_ONLY_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/')) && !session.is_dev) {
+    return NextResponse.redirect(new URL('/', request.url));
   }
 
   return NextResponse.next();
