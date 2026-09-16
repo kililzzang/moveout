@@ -19,6 +19,7 @@ export async function GET(request) {
     return NextResponse.json({ error: 'NAVERWORKS_BOARD_ID가 설정되지 않았어요.' }, { status: 500 });
   }
 
+  let postId;
   try {
     const accessToken = await getValidAccessToken(session.email);
 
@@ -28,7 +29,7 @@ export async function GET(request) {
       title: '[삭제예정] 첨부파일 API 인라인 테스트',
       body: `이 글은 "게시글 첨부파일 API"로 올린 사진이 본문 안에 썸네일로 보이는지,\n아니면 파일 목록으로만 보이는지 확인하는 테스트입니다.\n확인 후 삭제해주세요.\n\n올린 사람: ${session.name} (${session.email})`,
     });
-    const postId = posted.postId || posted.id;
+    postId = posted.postId || posted.id;
     if (!postId) {
       return NextResponse.json({ error: '게시글은 만들어졌는데 postId를 못 받았어요.', posted }, { status: 500 });
     }
@@ -39,19 +40,33 @@ export async function GET(request) {
     }
     const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
 
-    const attachResult = await addPostAttachment({
-      accessToken,
-      boardId,
-      postId,
-      fileName: 'attachment-test.png',
-      fileSize: imgBuffer.length,
-      contentType: 'image/png',
-      fileBuffer: imgBuffer,
-    });
+    // 첫 시도에서 방금 만든 게시글을 첨부 API가 바로 못 찾는(404 Post does not
+    // exist) 현상이 있어서, 색인 반영 지연일 가능성을 두고 짧게 재시도한다.
+    let attachResult;
+    let lastErr;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+      try {
+        attachResult = await addPostAttachment({
+          accessToken,
+          boardId,
+          postId,
+          fileName: 'attachment-test.png',
+          fileSize: imgBuffer.length,
+          contentType: 'image/png',
+          fileBuffer: imgBuffer,
+        });
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (lastErr) throw lastErr;
 
     return NextResponse.json({ ok: true, postId, attachResult });
   } catch (err) {
     console.error('첨부파일 테스트 실패:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message, postId: postId ?? null }, { status: 500 });
   }
 }
