@@ -945,6 +945,7 @@ export default function ChecklistApp() {
               <Link href="/assignments" target="_blank" className="btn">내 작업 배정</Link>
               <Link href="/repair-clipboard" target="_blank" className="btn">하자보수 클립보드</Link>
               <Link href="/cleaning-clipboard" target="_blank" className="btn">청소완료 클립보드</Link>
+              <Link href="/dashboard" target="_blank" className="btn">담당별 대시보드</Link>
             </>
           )}
           <button type="button" className="btn primary" onClick={handleSaveReport}>리포트 저장·복사</button>
