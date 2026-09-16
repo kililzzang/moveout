@@ -51,7 +51,12 @@ export async function GET(request) {
     return NextResponse.json({ error: '오늘 게시된 건이 없어요.' }, { status: 404 });
   }
 
-  const media = buildMediaFromRow(row);
+  // 샘플 확인용이라 사진을 전부 원본 화질로 박아 넣으면 파일이 수십 MB로
+  // 커진다(실사용 시엔 문제 없지만 지금은 그냥 형태만 보면 되므로) — 개수를
+  // 제한한다. ?limit=0 이면 전체.
+  const limit = parseInt(searchParams.get('limit') ?? '6', 10);
+  const fullMedia = buildMediaFromRow(row);
+  const media = limit > 0 ? fullMedia.slice(0, limit) : fullMedia;
   const defectSummaryLines = buildDefectSummaryLines(row);
   const args = { title: row.title, bodyText: row.body, media, defectSummaryLines };
 
