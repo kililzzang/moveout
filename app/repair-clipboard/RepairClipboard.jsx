@@ -4,6 +4,8 @@ import { createClient } from '../../lib/supabaseClient';
 import { fetchLatestHistoryEntry, fetchRepairHistoryForUnitKey } from '../../lib/history';
 import { fmtWon } from '../../lib/report';
 import { KNOWN_BUILDINGS } from '../../lib/checklistState';
+import TopNav from '../_shared/TopNav';
+import { syncOrderToNotion } from '../../lib/notionSyncClient';
 
 // 2026-09-16 신설 — "하자보수 클립보드"(박길일님 설계): /assignments가 "나한테
 // 배정된 것만" 보여주는 것과 달리, 여기는 호실을 직접 입력하면 그 호실의 가장
@@ -76,15 +78,15 @@ export default function RepairClipboard() {
     const { error } = await supabase.from('work_orders').update(patch).eq('id', order.id);
     setSaveStatus(error ? '저장 실패 — 다시 시도해주세요' : (markComplete ? '완료 처리했어요' : '저장했어요'));
     if (!error && markComplete) setOrder((o) => ({ ...o, repair_status: 'completed' }));
+    if (!error) syncOrderToNotion(order.id);
   }
 
   return (
-    <div className="wrap">
+    <>
+      <TopNav />
+      <div className="wrap">
       <div className="masthead">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <h1>하자보수 클립보드</h1>
-          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
-        </div>
+        <h1>하자보수 클립보드</h1>
         <p>건물명·호실을 입력하면 가장 최근 점검에서 나온 보수 대상 하자를 불러옵니다. 고친 항목을 체크하고, 필요하면 추가사항을 적어주세요.</p>
       </div>
 
@@ -169,6 +171,7 @@ export default function RepairClipboard() {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }

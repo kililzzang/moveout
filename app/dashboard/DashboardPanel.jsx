@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '../../lib/supabaseClient';
+import TopNav from '../_shared/TopNav';
 
 // 2026-09-16 신설 — "담당별 대시보드"(박길일님 설계 1번): 역할에 따라 보이는 내용이
 // 다르다. 점검원/보수작업자/청소작업자는 자기 트랙 기준 진행현황·납기·이달/누적
@@ -106,12 +107,11 @@ export default function DashboardPanel() {
   }, [orders, isAdmin]);
 
   return (
-    <div className="wrap">
+    <>
+      <TopNav />
+      <div className="wrap">
       <div className="masthead">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <h1>담당별 대시보드</h1>
-          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
-        </div>
+        <h1>담당별 대시보드</h1>
         <p>{me && me !== 'anon' ? `${me.name || me.email}님 (${me.role})` : '불러오는 중…'}</p>
       </div>
 
@@ -189,6 +189,7 @@ export default function DashboardPanel() {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }

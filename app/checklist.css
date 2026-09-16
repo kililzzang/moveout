@@ -136,6 +136,23 @@ body{background:var(--bg);}
 .building-field select{width:100%;height:36px;border-radius:8px;border:1px solid var(--line);background:var(--surface-alt);color:var(--ink);font-size:14px;padding:0 8px;box-sizing:border-box;}
 .building-field input{margin-top:6px;}
 
+/* 2026-09-16: 공통 상단 내비게이션(TopNav) — 화면마다 따로 있던 마스트헤드 로그아웃
+   버튼을 여기 하나로 모으고, 역할에 맞는 화면 탭을 항상 보여준다. */
+.topnav{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--surface);border-bottom:1px solid var(--line);padding:0 16px;height:52px;}
+.topnav-links{display:flex;align-items:center;gap:4px;overflow-x:auto;height:100%;}
+.topnav-link{flex-shrink:0;display:flex;align-items:center;height:100%;padding:0 12px;font-family:var(--font-display);font-size:13.5px;font-weight:600;color:var(--ink-soft);text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap;}
+.topnav-link:hover{color:var(--ink);}
+.topnav-link.active{color:var(--accent);border-bottom-color:var(--accent);}
+.topnav-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.topnav-user{font-size:12.5px;color:var(--ink-soft);white-space:nowrap;}
+.topnav-logout{font-size:12px;color:var(--ink-faint);text-decoration:none;border:1px solid var(--line);border-radius:7px;padding:5px 9px;white-space:nowrap;}
+.topnav-logout:hover{color:var(--ink);background:var(--surface-alt);}
+
+@media (max-width: 480px){
+  .topnav{padding:0 10px;}
+  .topnav-user{display:none;}
+}
+
 @media (prefers-reduced-motion: reduce){ *{transition:none !important;} }
 @media (max-width: 480px){
   .wrap{padding:16px 12px 110px;}

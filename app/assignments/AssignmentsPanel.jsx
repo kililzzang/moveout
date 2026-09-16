@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '../../lib/supabaseClient';
 import { fmtWon } from '../../lib/report';
+import TopNav from '../_shared/TopNav';
+import { syncOrderToNotion } from '../../lib/notionSyncClient';
 
 // 2026-09-16 신설 — Notion팀이 설계한 work_orders 스키마 기반 "내 작업 배정" 화면.
 // 점검/보수/청소 3개 트랙 중 로그인한 사람의 이메일이 담당자로 들어간 항목을 모아,
@@ -103,6 +105,7 @@ export default function AssignmentsPanel() {
       }
     }
     setOrders((os) => os.map((o) => (o.id === row.orderId ? { ...o, ...fields } : o)));
+    if (!error) syncOrderToNotion(row.orderId);
     setBusyKey(null);
   }
 
@@ -124,12 +127,11 @@ export default function AssignmentsPanel() {
   }
 
   return (
-    <div className="wrap">
+    <>
+      <TopNav />
+      <div className="wrap">
       <div className="masthead">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <h1>내 작업 배정</h1>
-          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
-        </div>
+        <h1>내 작업 배정</h1>
         <p>점검·보수·청소 중 나한테 배정된 작업만 모아 보여줍니다. 새 작업이 오면 아래에서 수락·거절하고, 진행 중인 작업은 끝나면 완료 처리하세요.</p>
       </div>
 
@@ -232,6 +234,7 @@ export default function AssignmentsPanel() {
           })}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }

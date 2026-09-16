@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '../../lib/supabaseClient';
 import { fmtWon, formatDateKorean } from '../../lib/report';
 import { KNOWN_BUILDINGS } from '../../lib/checklistState';
+import TopNav from './TopNav';
 
 // 보수작업자/청소작업자 기준 페이지가 공유하는 화면 — 둘 다 "inspections" 표에서
 // 호실별 최신 점검 하나(items 배열)를 가져와 category('maintenance'|'cleaning')로
@@ -46,12 +47,11 @@ export default function WorkList({ category, title, subtitle, emptyText }) {
   const totalAmount = units.reduce((s, u) => s + (u.catTotal || 0), 0);
 
   return (
-    <div className="wrap">
+    <>
+      <TopNav />
+      <div className="wrap">
       <div className="masthead">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <h1>{title}</h1>
-          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
-        </div>
+        <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>
 
@@ -110,6 +110,7 @@ export default function WorkList({ category, title, subtitle, emptyText }) {
           ))}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }

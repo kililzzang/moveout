@@ -4,6 +4,8 @@ import { createClient } from '../../lib/supabaseClient';
 import { fetchLatestHistoryEntry, fetchCleaningHistoryForUnitKey } from '../../lib/history';
 import { fmtWon } from '../../lib/report';
 import { KNOWN_BUILDINGS } from '../../lib/checklistState';
+import TopNav from '../_shared/TopNav';
+import { syncOrderToNotion } from '../../lib/notionSyncClient';
 
 // 2026-09-16 신설 — "청소완료 클립보드"(박길일님 설계). 하자보수 클립보드와 구조는
 // 같되(호실 입력 → 최근 점검의 청소 대상 항목 불러와 체크), 청소는 일하면서 새로
@@ -89,15 +91,15 @@ export default function CleaningClipboard() {
     const { error } = await supabase.from('work_orders').update(patch).eq('id', order.id);
     setSaveStatus(error ? '저장 실패 — 다시 시도해주세요' : (markComplete ? '완료 처리했어요' : '저장했어요'));
     if (!error && markComplete) setOrder((o) => ({ ...o, cleaning_status: 'completed' }));
+    if (!error) syncOrderToNotion(order.id);
   }
 
   return (
-    <div className="wrap">
+    <>
+      <TopNav />
+      <div className="wrap">
       <div className="masthead">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <h1>청소완료 클립보드</h1>
-          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
-        </div>
+        <h1>청소완료 클립보드</h1>
         <p>건물명·호실을 입력하면 가장 최근 점검에서 나온 청소 대상 항목을 불러옵니다. 청소하다 새로 발견한 하자가 있으면 그 자리에서 추가해주세요.</p>
       </div>
 
@@ -201,6 +203,7 @@ export default function CleaningClipboard() {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }

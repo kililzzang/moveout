@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '../../lib/supabaseClient';
+import TopNav from '../_shared/TopNav';
+import { syncOrderToNotion } from '../../lib/notionSyncClient';
 
 // 2026-09-16 신설 — "관리자 클립보드"(박길일님 설계 5번, 가장 큰 작업): 각 work_order의
 // 점검/보수/청소 트랙을 담당자에게 배정하고, 진행 상태·수락/거절 여부를 한눈에 본다.
@@ -222,6 +224,7 @@ export default function AdminPanel() {
     const { error } = await supabase.from('work_orders').update(patch).eq('id', order.id);
     if (!error) {
       setOrders((os) => os.map((o) => (o.id === order.id ? { ...o, ...patch } : o)));
+      syncOrderToNotion(order.id);
     }
     setBusyKey(null);
   }
@@ -229,12 +232,11 @@ export default function AdminPanel() {
   const visibleOrders = (orders || []).filter((o) => !hideCompleted || o.overall_status !== 'completed');
 
   return (
-    <div className="wrap">
+    <>
+      <TopNav />
+      <div className="wrap">
       <div className="masthead">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <h1>관리자 클립보드</h1>
-          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
-        </div>
+        <h1>관리자 클립보드</h1>
         <p>각 작업(점검·보수·청소)을 담당자에게 배정하고, 진행 상태·수락/거절 여부를 확인합니다.</p>
       </div>
 
@@ -285,6 +287,7 @@ export default function AdminPanel() {
           ))}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }
