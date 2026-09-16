@@ -22,10 +22,112 @@ const STATUS_COLOR = {
   not_applicable: { bg: 'var(--neutral-chip)', ink: 'var(--ink-faint)' },
 };
 const OVERALL_LABEL = { received: '접수', inspecting: '점검중', inspected: '점검완료', processing: '진행중', billing_pending: '청구대기', completed: '완료' };
+const ROLE_OPTIONS = [
+  { key: 'admin', label: '관리자' },
+  { key: 'inspector', label: '점검원' },
+  { key: 'repair', label: '보수' },
+  { key: 'cleaner', label: '청소' },
+];
 
 function toDateInputValue(iso) {
   if (!iso) return '';
   return new Date(iso).toISOString().slice(0, 10);
+}
+
+function hasRole(user, role) {
+  return (user.roles && user.roles.length ? user.roles : [user.role]).includes(role);
+}
+
+// 2026-09-16 신설 — "관리자가 SQL 없이 화면에서 직접 역할을 배정/해제"(박길일님 요청).
+// 체크박스 하나 토글할 때마다 그 사람의 roles 배열 전체를 다시 저장한다(개별
+// role만 따로 켜고 끄는 API를 만들기보다, 매번 "이 사람의 최종 역할 집합은
+// 이거다"를 통째로 보내는 게 더 단순하고 꼬일 일이 없다).
+function UserManagement({ users, onChanged }) {
+  const [busyEmail, setBusyEmail] = useState(null);
+  const [newEmail, setNewEmail] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newRoles, setNewRoles] = useState([]);
+  const [status, setStatus] = useState('');
+
+  async function saveUser(email, name, roles) {
+    setBusyEmail(email);
+    setStatus('');
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, roles }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setStatus(res.ok ? '' : data.error || '저장 실패');
+    setBusyEmail(null);
+    if (res.ok) onChanged();
+    return res.ok;
+  }
+
+  async function toggleRole(user, role) {
+    const current = user.roles && user.roles.length ? user.roles : [user.role];
+    const next = current.includes(role) ? current.filter((r) => r !== role) : current.concat([role]);
+    if (next.length === 0) { setStatus('최소 1개 역할은 있어야 해요.'); return; }
+    await saveUser(user.email, user.name, next);
+  }
+
+  async function handleDelete(email) {
+    if (!confirm(email + ' 팀원을 삭제할까요? 로그인 권한이 즉시 사라집니다.')) return;
+    setBusyEmail(email);
+    const res = await fetch('/api/admin/users?email=' + encodeURIComponent(email), { method: 'DELETE' });
+    setBusyEmail(null);
+    if (res.ok) onChanged();
+  }
+
+  function toggleNewRole(role) {
+    setNewRoles((rs) => (rs.includes(role) ? rs.filter((r) => r !== role) : rs.concat([role])));
+  }
+
+  async function handleAdd() {
+    if (!newEmail.trim() || newRoles.length === 0) { setStatus('이메일과 역할을 입력해주세요.'); return; }
+    const ok = await saveUser(newEmail.trim(), newName.trim(), newRoles);
+    if (ok) { setNewEmail(''); setNewName(''); setNewRoles([]); }
+  }
+
+  return (
+    <div className="info-card">
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>팀원 관리</div>
+      {users.map((u) => (
+        <div key={u.email} style={{ padding: '8px 0', borderTop: '1px solid var(--line-soft)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: 13.5 }}><b>{u.name || '(이름 없음)'}</b> · {u.email}</span>
+            <button type="button" className="btn bad" style={{ padding: '4px 10px', fontSize: 12 }} disabled={busyEmail === u.email} onClick={() => handleDelete(u.email)}>삭제</button>
+          </div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {ROLE_OPTIONS.map((r) => (
+              <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5 }}>
+                <input type="checkbox" checked={hasRole(u, r.key)} disabled={busyEmail === u.email} onChange={() => toggleRole(u, r.key)} />
+                {r.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>새 팀원 추가</div>
+        <div className="custom-add-row" style={{ padding: 0, marginBottom: 8 }}>
+          <input type="text" placeholder="이메일" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          <input type="text" placeholder="이름" value={newName} onChange={(e) => setNewName(e.target.value)} style={{ maxWidth: 140 }} />
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+          {ROLE_OPTIONS.map((r) => (
+            <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5 }}>
+              <input type="checkbox" checked={newRoles.includes(r.key)} onChange={() => toggleNewRole(r.key)} />
+              {r.label}
+            </label>
+          ))}
+        </div>
+        <button type="button" className="btn primary" disabled={busyEmail !== null} onClick={handleAdd}>추가</button>
+        {status && <span style={{ marginLeft: 10, fontSize: 12.5, color: 'var(--bad)' }}>{status}</span>}
+      </div>
+    </div>
+  );
 }
 
 function TrackAssignRow({ track, order, users, onAssign, busy }) {
@@ -33,7 +135,7 @@ function TrackAssignRow({ track, order, users, onAssign, busy }) {
   const currentEmail = order[track.emailField] || '';
   const [email, setEmail] = useState(currentEmail);
   const [due, setDue] = useState(toDateInputValue(order[track.dueField]));
-  const candidates = users.filter((u) => u.role === track.role);
+  const candidates = users.filter((u) => hasRole(u, track.role));
   const colors = STATUS_COLOR[status] || STATUS_COLOR.waiting;
 
   if (status === 'not_applicable') {
@@ -78,9 +180,13 @@ export default function AdminPanel() {
   const [hideCompleted, setHideCompleted] = useState(true);
   const [busyKey, setBusyKey] = useState(null);
 
+  function refreshUsers() {
+    fetch('/api/admin/users').then((r) => r.json()).then((d) => setUsers(d.users || []));
+  }
+
   useEffect(() => {
     fetch('/api/session').then((r) => r.json()).then((s) => setMe(s.loggedIn ? s : 'anon'));
-    fetch('/api/admin/users').then((r) => r.json()).then((d) => setUsers(d.users || []));
+    refreshUsers();
   }, []);
 
   useEffect(() => {
@@ -128,14 +234,16 @@ export default function AdminPanel() {
 
       {me === null && <div className="cleanup-empty">불러오는 중…</div>}
       {me === 'anon' && <div className="cleanup-empty">로그인이 필요합니다.</div>}
-      {me && me !== 'anon' && me.role !== 'admin' && (
+      {me && me !== 'anon' && !hasRole(me, 'admin') && (
         <div className="cleanup-empty">관리자만 접근할 수 있는 화면이에요.</div>
       )}
 
-      {me && me !== 'anon' && me.role === 'admin' && orders === null && <div className="cleanup-empty">불러오는 중…</div>}
+      {me && me !== 'anon' && hasRole(me, 'admin') && orders === null && <div className="cleanup-empty">불러오는 중…</div>}
 
-      {me && me !== 'anon' && me.role === 'admin' && orders !== null && (
+      {me && me !== 'anon' && hasRole(me, 'admin') && orders !== null && (
         <>
+          <UserManagement users={users} onChanged={refreshUsers} />
+
           <div className="info-card" style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>전체 건수</div>

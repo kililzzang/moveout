@@ -46,7 +46,7 @@ export async function GET(request) {
   const supabase = createServiceClient();
   const { data: allowedUser, error } = await supabase
     .from('allowed_users')
-    .select('email, name, role, is_dev')
+    .select('email, name, role, is_dev, roles')
     .eq('email', email)
     .maybeSingle();
 
@@ -72,6 +72,11 @@ export async function GET(request) {
     email: allowedUser.email,
     name: allowedUser.name || name,
     role: allowedUser.role,
+    // 2026-09-16: 한 사람이 여러 역할을 겸할 수 있게 — 권한 판단(관리자인가?
+    // 이 트랙 담당자 후보인가?)은 이 배열을 본다. 아직 roles가 안 채워진(빈 배열)
+    // 행이면 기존 단일 role만이라도 담아서, 막 추가한 컬럼 때문에 권한이 갑자기
+    // 사라지는 일이 없게 한다.
+    roles: allowedUser.roles && allowedUser.roles.length ? allowedUser.roles : [allowedUser.role],
     // 2026-09-16: proxy.js가 개발 중인 기능(/repair, /cleaning, /assignments)을
     // 이 값으로만 막는다 — allowed_users.is_dev가 true인 계정만 로그인 시점에
     // 이 플래그를 세션에 실어간다(박길일님 요청: 실사용 전인 기능들이 실제

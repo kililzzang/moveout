@@ -31,6 +31,11 @@ function isThisMonth(iso) {
   const d = new Date(iso), now = new Date();
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
+// 2026-09-16: 한 사람이 역할을 여러 개 가질 수 있게 됨(allowed_users.roles 배열) —
+// 예전 세션 쿠키(roles 없이 role만 있는)와도 호환되게 폴백을 둔다.
+function hasRole(user, role) {
+  return (user.roles && user.roles.length ? user.roles : [user.role]).includes(role);
+}
 
 export default function DashboardPanel() {
   const supabase = useMemo(() => createClient(), []);
@@ -44,7 +49,7 @@ export default function DashboardPanel() {
 
   useEffect(() => {
     if (!me || me === 'anon') return;
-    const isAdmin = me.role === 'admin';
+    const isAdmin = hasRole(me, 'admin');
     const cols = 'id, unit_key, overall_status, inspector_email, inspection_status, inspection_due_at, inspection_completed_at, repair_email, repair_status, repair_due_at, repair_completed_at, cleaning_email, cleaning_status, cleaning_due_at, cleaning_completed_at, created_at';
     const query = isAdmin
       ? supabase.from('work_orders').select(cols).order('created_at', { ascending: false }).limit(500)
@@ -64,7 +69,7 @@ export default function DashboardPanel() {
     });
   }, [me, supabase]);
 
-  const isAdmin = me && me !== 'anon' && me.role === 'admin';
+  const isAdmin = me && me !== 'anon' && hasRole(me, 'admin');
 
   // 내 트랙 행만 펼치기(관리자가 아닐 때) — /assignments와 같은 방식.
   const myRows = useMemo(() => {

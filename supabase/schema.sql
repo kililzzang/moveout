@@ -115,7 +115,14 @@ create table if not exists allowed_users (
   -- 중인 화면을 보고 혼란스러워하지 않게 하기 위함(박길일님 요청). 기존 표에 이미
   -- 행이 있으면 이 컬럼 추가 후 본인 이메일 행만 따로 true로 바꿔야 한다:
   --   update allowed_users set is_dev = true where email = '본인 이메일';
-  is_dev boolean not null default false
+  is_dev boolean not null default false,
+  -- 2026-09-16 추가: 한 사람이 역할을 여러 개 겸할 수 있게(박길일님 요청 — 본인
+  -- 계정으로 관리자 겸 보수·청소 테스트도 해보고 싶다고 하심, 그리고 관리자가
+  -- SQL 없이 화면에서 직접 역할을 배정/해제할 수 있어야 한다고 하심). 기존 단일
+  -- `role` 컬럼은 그대로 두고(로그인 직후 어디로 보낼지 등 "기본 역할" 용도),
+  -- 권한 판단(관리자인가? 이 트랙에 배정 가능한가?)은 전부 이 배열을 본다.
+  -- app/api/admin/users가 이 배열을 화면에서 관리할 수 있게 해준다.
+  roles text[] not null default '{}'
 );
 
 -- 예시(실제 이메일로 교체해서 넣으세요):
@@ -130,6 +137,10 @@ create policy "service role only" on allowed_users for all using (false) with ch
 -- 배포에도 반영되도록 별도로 ALTER TABLE을 한 번 더 실행한다 — 이미 컬럼이
 -- 있으면 아무 일도 안 하니 여러 번 실행해도 안전하다.
 alter table allowed_users add column if not exists is_dev boolean not null default false;
+alter table allowed_users add column if not exists roles text[] not null default '{}';
+-- 기존 행들은 roles가 비어있을 테니, 지금까지 쓰던 단일 role 값을 배열의 첫 항목으로
+-- 채워준다(이미 채워진 행은 건드리지 않음 — 여러 번 실행해도 안전).
+update allowed_users set roles = array[role] where roles = '{}';
 -- 본인 이메일 행만 true로 바꿔서 개발자 모드로 들어갈 수 있게 하세요:
 --   update allowed_users set is_dev = true where email = '본인 이메일';
 
