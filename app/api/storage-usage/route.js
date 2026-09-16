@@ -45,21 +45,33 @@ export async function GET(request) {
     }
   }
 
+  // 순서대로 하나씩 HEAD 요청을 보내면 파일이 많을 때 Vercel 함수 제한시간을
+  // 넘길 수 있어서, 한 번에 여러 개씩 동시에 보낸다.
   let totalBytes = 0;
   let checked = 0;
   let failed = 0;
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, { method: 'HEAD' });
-      const len = res.headers.get('content-length');
-      if (res.ok && len) {
-        totalBytes += parseInt(len, 10);
+  const urlList = [...urls];
+  const CONCURRENCY = 10;
+  for (let i = 0; i < urlList.length; i += CONCURRENCY) {
+    const batch = urlList.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (url) => {
+        try {
+          const res = await fetch(url, { method: 'HEAD' });
+          const len = res.headers.get('content-length');
+          if (res.ok && len) return parseInt(len, 10);
+          return null;
+        } catch {
+          return null;
+        }
+      })
+    );
+    for (const bytes of results) {
+      if (bytes === null) failed++;
+      else {
+        totalBytes += bytes;
         checked++;
-      } else {
-        failed++;
       }
-    } catch {
-      failed++;
     }
   }
 

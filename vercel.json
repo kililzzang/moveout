@@ -1,3 +1,8 @@
 {
-  "crons": []
+  "crons": [],
+  "functions": {
+    "app/api/storage-usage/route.js": {
+      "maxDuration": 30
+    }
+  }
 }
