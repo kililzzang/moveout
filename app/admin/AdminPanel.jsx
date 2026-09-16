@@ -176,7 +176,10 @@ export default function AdminPanel() {
   const [me, setMe] = useState(null);
   const [users, setUsers] = useState([]);
   const [orders, setOrders] = useState(null);
-  const [fetchError, setFetchError] = useState(null); // 2026-09-16: 임시 디버그, 확인 후 제거 예정
+  // 2026-09-16: work_orders 조회가 실패하면(네트워크 오류 등) 화면에 바로 보여준다 —
+  // "0건"과 "조회 자체가 실패함"을 구분 못 하면 디버깅이 어렵다는 걸 실제로 겪었다
+  // (RLS 정책이 이상 동작해서 에러 없이 빈 배열만 왔던 사례, 정책 재생성으로 해결).
+  const [fetchError, setFetchError] = useState(null);
   const [units, setUnits] = useState({});
   const [hideCompleted, setHideCompleted] = useState(true);
   const [busyKey, setBusyKey] = useState(null);
@@ -197,7 +200,7 @@ export default function AdminPanel() {
       .order('created_at', { ascending: false })
       .limit(300)
       .then(async ({ data, error }) => {
-        if (error) console.error('work_orders 조회 실패:', error); // 2026-09-16: 임시 디버그 — 0건으로 보이는 원인 확인용, 확인 후 제거 예정
+        if (error) console.error('work_orders 조회 실패:', error);
         const rows = error ? [] : (data || []);
         setOrders(rows);
         setFetchError(error ? error.message : null);
