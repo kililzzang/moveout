@@ -6,7 +6,7 @@ import { SECTIONS } from '../lib/sections';
 import {
   INFO_FIELDS, KNOWN_BUILDINGS, defaultState, loadState, saveState, unitDocId, uid,
 } from '../lib/checklistState';
-import { fetchLatestHistoryEntry } from '../lib/history';
+import { fetchLatestHistoryEntry, fetchRepairHistoryForUnitKey } from '../lib/history';
 import {
   fmtWon, isCleaningCategory, collectIncompleteDefects, buildOfficialFormReport,
   buildNaverWorksTitle, buildAttachmentPlan,
@@ -232,25 +232,51 @@ function PrevInspectionCard({ entry }) {
   );
 }
 
-function RepairHistoryCard() {
+// 2026-09-16: work_orders.repair_items(항목별 done)가 있으면 실제 데이터로,
+// 없으면 예전처럼 "아직 연동된 데이터가 없어요" 안내문구로 — 조치완료는 평범하게,
+// 미조치는 경고색으로 눈에 띄게 보여준다(박길일님 요청: "미조치는 알람(주의)").
+// 현재 점검원이 바로 이 화면을 보면서 점검하기 때문에, 이 경고 표시 자체가
+// "미조치내역 점검 시 주의확인"도 같이 해결한다 — 별도 화면이 필요 없다.
+function RepairHistoryCard({ history }) {
+  const items = history && Array.isArray(history.repair_items) ? history.repair_items : null;
   return (
     <div className="history-card">
       <b>하자보수 완료내역</b>
-      <div style={{ marginTop: 8, color: 'var(--ink-soft)' }}>
-        아직 연동된 데이터가 없어요 — 추후 실제 보수 완료 내역이 여기에 표시될 예정입니다.
-      </div>
+      {items && items.length ? (
+        <div style={{ marginTop: 8 }}>
+          {items.map((it, i) => (
+            <div
+              key={i}
+              style={{
+                color: it.done ? 'var(--ink)' : 'var(--bad)',
+                fontWeight: it.done ? 400 : 700,
+              }}
+            >
+              {it.done ? '✓' : '⚠'} {it.label}{it.note ? ' ' + it.note : ''}
+              {it.amount ? ' (' + fmtWon(it.amount) + '원)' : ''}
+              {!it.done ? ' — 미조치' : ''}
+            </div>
+          ))}
+        </div>
+      ) : history && items && items.length === 0 ? (
+        <div style={{ marginTop: 8, color: 'var(--ok)' }}>이전 점검에 보수 대상 하자가 없었어요.</div>
+      ) : (
+        <div style={{ marginTop: 8, color: 'var(--ink-soft)' }}>
+          아직 연동된 데이터가 없어요 — 이전 점검이 이 앱으로 저장된 뒤부터 여기 표시됩니다.
+        </div>
+      )}
     </div>
   );
 }
 
-function HistoryPanel({ entry, building, unit, remark, onRemarkChange }) {
+function HistoryPanel({ entry, repairHistory, building, unit, remark, onRemarkChange }) {
   if (!building || !unit) return null;
   return (
     <div className="history-panel-wrap">
       <div className="history-panel-caption">{building} {unit}호 (참고용)</div>
       <div className="history-panel">
         <PrevInspectionCard entry={entry} />
-        <RepairHistoryCard />
+        <RepairHistoryCard history={repairHistory} />
       </div>
       <div className="memo-card" style={{ marginTop: 0 }}>
         <label style={{ fontWeight: 700, display: 'block', marginBottom: 8 }}>비고(의견)</label>
@@ -543,6 +569,7 @@ export default function ChecklistApp() {
   const [state, setState] = useState(() => loadState());
   const [openSection, setOpenSection] = useState(SECTIONS[0].id);
   const [historyEntry, setHistoryEntry] = useState(null);
+  const [repairHistory, setRepairHistory] = useState(null); // { repair_status, repair_items, repair_completed_at } | null
   const [reportOpen, setReportOpen] = useState(false);
   const [reportText, setReportText] = useState('');
   const [saveStatus, setSaveStatus] = useState({ kind: '', text: '' });
@@ -554,14 +581,19 @@ export default function ChecklistApp() {
   const [toasts, setToasts] = useState([]);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [isDev, setIsDev] = useState(false);
+  const [mySession, setMySession] = useState(null); // null=조회 중, 'anon'=비로그인, {email,name,role,is_dev}
   const sectionRefs = useRef({});
 
   // 2026-09-16: 아직 실사용 준비 안 된 기능(보수·청소작업 목록, 내 작업 배정)
   // 링크는 개발자 계정(allowed_users.is_dev)한테만 보여준다 — proxy.js가 접근
   // 자체는 이미 막아주지만, 막힌 링크가 버튼으로 버젓이 보이면 실제 점검원들이
-  // 눌러보고 헷갈릴 수 있어서 아예 숨긴다(박길일님 요청).
+  // 눌러보고 헷갈릴 수 있어서 아예 숨긴다(박길일님 요청). 로그인한 사람의 이메일은
+  // work_orders에 inspector_email로 남길 때도 쓴다(upsertWorkOrder 참고).
   useEffect(() => {
-    fetch('/api/session').then((r) => r.json()).then((s) => setIsDev(!!(s.loggedIn && s.is_dev))).catch(() => {});
+    fetch('/api/session').then((r) => r.json()).then((s) => {
+      setIsDev(!!(s.loggedIn && s.is_dev));
+      setMySession(s.loggedIn ? s : 'anon');
+    }).catch(() => setMySession('anon'));
   }, []);
 
   function showToast(text, ms) {
@@ -574,9 +606,19 @@ export default function ChecklistApp() {
 
   useEffect(() => {
     const b = state.info.building, u = state.info.unit;
-    if (!b || !u) { setHistoryEntry(null); return; }
+    if (!b || !u) { setHistoryEntry(null); setRepairHistory(null); return; }
     const t = setTimeout(() => {
-      fetchLatestHistoryEntry(supabase, b, u).then((entry) => setHistoryEntry(entry)).catch(() => {});
+      fetchLatestHistoryEntry(supabase, b, u).then((entry) => {
+        setHistoryEntry(entry);
+        // 2026-09-16: 이전 점검이 실서비스(inspections) 기록이면(entry.id가 있으면)
+        // 그 점검이 만든 work_orders를 찾아 항목별 보수 완료 여부를 같이 보여준다.
+        // 정적 스냅샷(unit_history)만 있는 경우는 대응하는 work_orders가 없다.
+        if (entry && entry.id) {
+          fetchRepairHistoryForUnitKey(supabase, entry.id).then((r) => setRepairHistory(r)).catch(() => setRepairHistory(null));
+        } else {
+          setRepairHistory(null);
+        }
+      }).catch(() => {});
     }, 400);
     return () => clearTimeout(t);
   }, [state.info.building, state.info.unit, supabase]);
@@ -689,6 +731,48 @@ export default function ChecklistApp() {
     };
   }
 
+  // 2026-09-16: 점검 저장 시 work_orders를 만들거나 갱신한다 — "하자보수 완료내역"을
+  // 다음 점검 때 보여주려면 이번 점검의 유지보수 하자 항목들을 항목 단위로 어딘가에
+  // 스냅샷해둬야 한다(전에는 단순 안내문구뿐이었음, 박길일님 요청으로 실데이터 연동).
+  // inspections처럼 덮어쓰지 않고, 이 호실의 "아직 완료 안 된" work_order가 있으면
+  // 그걸 갱신하고, 없으면(예: 이전 사이클이 이미 completed) 새로 만든다.
+  async function upsertWorkOrder(items) {
+    const repairItems = items
+      .filter((it) => it.category === 'maintenance')
+      .map((it) => ({ label: it.label, note: it.note, amount: it.amount, done: false, done_note: '' }));
+    try {
+      const { data: existing } = await supabase
+        .from('work_orders')
+        .select('id')
+        .eq('unit_key', docId)
+        .neq('overall_status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const patch = {
+        unit_key: docId,
+        inspector_email: mySession && mySession !== 'anon' ? mySession.email : null,
+        inspection_status: 'completed',
+        inspection_completed_at: new Date().toISOString(),
+        repair_status: repairItems.length ? 'waiting' : 'not_applicable',
+        repair_items: repairItems,
+        // 청소는 하자 유무와 무관하게 항상 진행 — 아직 담당자 배정 전이라 'waiting'.
+        cleaning_status: 'waiting',
+        overall_status: 'inspected',
+      };
+      if (existing) {
+        await supabase.from('work_orders').update(patch).eq('id', existing.id);
+      } else {
+        await supabase.from('work_orders').insert(patch);
+      }
+    } catch (e) {
+      // work_orders는 아직 팀 전체 워크플로우가 다 갖춰지기 전이라, 실패해도
+      // 점검 저장 자체(가장 중요한 부분)는 막지 않는다.
+      console.error('work_orders 갱신 실패:', e);
+    }
+  }
+
   async function handleSaveReport() {
     const incomplete = collectIncompleteDefects(state);
     if (incomplete.length) {
@@ -706,7 +790,9 @@ export default function ChecklistApp() {
 
     navigator.clipboard?.writeText(text).catch(() => {});
 
-    supabase.from('inspections').upsert(buildInspectionRow())
+    const inspectionRow = buildInspectionRow();
+    upsertWorkOrder(inspectionRow.items);
+    supabase.from('inspections').upsert(inspectionRow)
       .then(({ error }) => {
         if (error) throw error;
         setSaveStatus({ kind: 'ok', text: '공유저장소 저장 완료' });
@@ -716,7 +802,7 @@ export default function ChecklistApp() {
     try {
       // 2026-09-15: 게시글 맨 앞에 들어갈 "이전호실점검내역/하자보수완료내역/비고" 이미지
       // (박길일님 요청) — v1/v2와 같은 방식으로 만들어서 post_queue에 URL만 저장해둔다.
-      const historyFile = buildHistorySummaryImage(state, historyEntry);
+      const historyFile = buildHistorySummaryImage(state, historyEntry, repairHistory);
       const v1File = buildChecklistImageV1(state, SECTIONS);
       const v2File = buildChecklistImageV2(state, SECTIONS);
       const [historyUrl, v1Url, v2Url] = await Promise.all([
@@ -796,6 +882,7 @@ export default function ChecklistApp() {
       <InfoGrid state={state} setInfo={setInfo} />
       <HistoryPanel
         entry={historyEntry}
+        repairHistory={repairHistory}
         building={state.info.building}
         unit={state.info.unit}
         remark={state.historyRemark}

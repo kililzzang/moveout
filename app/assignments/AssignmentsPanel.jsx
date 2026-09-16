@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '../../lib/supabaseClient';
+import { fmtWon } from '../../lib/report';
 
 // 2026-09-16 신설 — Notion팀이 설계한 work_orders 스키마 기반 "내 작업 배정" 화면.
 // 점검/보수/청소 3개 트랙 중 로그인한 사람의 이메일이 담당자로 들어간 항목을 모아,
@@ -38,7 +39,7 @@ export default function AssignmentsPanel() {
     if (!me || me === 'anon') return;
     supabase
       .from('work_orders')
-      .select('id, unit_key, overall_status, inspector_email, inspection_status, inspection_due_at, inspection_reject_reason, repair_email, repair_status, repair_due_at, repair_reject_reason, cleaning_email, cleaning_status, cleaning_due_at, cleaning_reject_reason, created_at')
+      .select('id, unit_key, overall_status, inspector_email, inspection_status, inspection_due_at, inspection_reject_reason, repair_email, repair_status, repair_due_at, repair_reject_reason, repair_items, cleaning_email, cleaning_status, cleaning_due_at, cleaning_reject_reason, created_at')
       .or(`inspector_email.eq.${me.email},repair_email.eq.${me.email},cleaning_email.eq.${me.email}`)
       .order('created_at', { ascending: false })
       .limit(200)
@@ -70,6 +71,7 @@ export default function AssignmentsPanel() {
             status: o[t.statusField],
             due: o[t.dueField],
             reason: o[t.reasonField],
+            repairItems: t.key === 'repair' ? (o.repair_items || []) : null,
           });
         }
       });
@@ -102,6 +104,15 @@ export default function AssignmentsPanel() {
     }
     setOrders((os) => os.map((o) => (o.id === row.orderId ? { ...o, ...fields } : o)));
     setBusyKey(null);
+  }
+
+  // 2026-09-16: 보수 트랙은 항목이 여러 개일 수 있어서(work_orders.repair_items),
+  // 하나씩 체크할 수 있게 한다 — 다음 점검 때 "이전 하자가 실제로 고쳐졌는지"
+  // 항목별로 보여주려면(HistoryPanel 참고) 여기서 항목 단위로 done을 남겨야 한다.
+  async function toggleRepairItem(row, idx) {
+    const nextItems = row.repairItems.map((it, i) => (i === idx ? { ...it, done: !it.done } : it));
+    setOrders((os) => os.map((o) => (o.id === row.orderId ? { ...o, repair_items: nextItems } : o)));
+    await supabase.from('work_orders').update({ repair_items: nextItems }).eq('id', row.orderId);
   }
 
   function submitReject() {
@@ -190,6 +201,24 @@ export default function AssignmentsPanel() {
                   <span className="section-flag" style={{ background: 'var(--ok-bg)', color: 'var(--ok)' }}>진행 중</span>
                 </div>
                 <div className="cleanup-item-age">{fmtDue(row.due)}</div>
+                {row.repairItems && row.repairItems.length > 0 && (
+                  <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0 }}>
+                    {row.repairItems.map((it, idx) => (
+                      <li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 0', fontSize: 13.5 }}>
+                        <input
+                          type="checkbox"
+                          id={`repair-item-${row.orderId}-${idx}`}
+                          checked={!!it.done}
+                          onChange={() => toggleRepairItem(row, idx)}
+                          style={{ marginTop: 3 }}
+                        />
+                        <label htmlFor={`repair-item-${row.orderId}-${idx}`} style={{ textDecoration: it.done ? 'line-through' : 'none', color: it.done ? 'var(--ink-faint)' : 'var(--ink)' }}>
+                          {it.label}{it.note ? ' — ' + it.note : ''}{it.amount ? ' (' + fmtWon(it.amount) + '원)' : ''}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="cleanup-item-actions">
                   <button type="button" className="btn primary" disabled={busyKey === key} onClick={() => updateTrack(row, { status: 'completed' })}>
                     {busyKey === key ? '처리 중…' : '완료 처리'}

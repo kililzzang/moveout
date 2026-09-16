@@ -178,6 +178,12 @@ create table if not exists work_orders (
   repair_due_at timestamptz,
   repair_reject_reason text,
   repair_completed_at timestamptz,
+  -- 2026-09-16 추가: 보수 트랙은 work_order 전체에 상태가 하나뿐이면 "어떤 하자가
+  -- 실제로 고쳐졌는지"를 알 수 없다(박길일님 요청 — 다음 점검 때 항목별로
+  -- 조치완료/미조치를 보여줘야 함). 점검 저장 시 유지보수 카테고리 하자들을
+  -- [{label, note, amount, done, done_note}] 형태로 여기 스냅샷해두고, 보수
+  -- 작업자가 /assignments에서 항목별로 체크하면 done이 true로 바뀐다.
+  repair_items jsonb not null default '[]',
 
   cleaning_email text references allowed_users(email),
   cleaning_status text not null default 'assigned'
@@ -193,6 +199,10 @@ create table if not exists work_orders (
 
   notion_page_id text
 );
+-- work_orders CREATE TABLE을 이미 실행해서 repair_items 없이 만든 배포도 있을 수
+-- 있으니, 여기서도 한 번 더 안전하게 추가한다(이미 있으면 아무 일도 안 함).
+alter table work_orders add column if not exists repair_items jsonb not null default '[]';
+
 create index if not exists work_orders_unit_idx on work_orders (unit_key);
 create index if not exists work_orders_inspector_idx on work_orders (inspector_email, inspection_status);
 create index if not exists work_orders_repair_idx on work_orders (repair_email, repair_status);
