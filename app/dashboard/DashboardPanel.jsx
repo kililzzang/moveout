@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '../../lib/supabaseClient';
+import { fmtWon } from '../../lib/report';
 import TopNav from '../_shared/TopNav';
 
 // 2026-09-16 신설 — "담당별 대시보드"(박길일님 설계 1번): 역할에 따라 보이는 내용이
@@ -51,7 +52,7 @@ export default function DashboardPanel() {
   useEffect(() => {
     if (!me || me === 'anon') return;
     const isAdmin = hasRole(me, 'admin');
-    const cols = 'id, unit_key, overall_status, inspector_email, inspection_status, inspection_due_at, inspection_completed_at, repair_email, repair_status, repair_due_at, repair_completed_at, cleaning_email, cleaning_status, cleaning_due_at, cleaning_completed_at, created_at';
+    const cols = 'id, unit_key, overall_status, inspector_email, inspection_status, inspection_due_at, inspection_completed_at, repair_email, repair_status, repair_due_at, repair_completed_at, cleaning_email, cleaning_status, cleaning_due_at, cleaning_completed_at, created_at, invoice_amount, payment_status, paid_at';
     const query = isAdmin
       ? supabase.from('work_orders').select(cols).order('created_at', { ascending: false }).limit(500)
       : supabase.from('work_orders').select(cols)
@@ -104,6 +105,18 @@ export default function DashboardPanel() {
       });
     });
     return stats;
+  }, [orders, isAdmin]);
+
+  const financials = useMemo(() => {
+    if (!orders || !isAdmin) return null;
+    const totalBilled = orders.reduce((s, o) => s + (o.invoice_amount || 0), 0);
+    const unpaid = orders.filter((o) => o.payment_status !== 'paid').reduce((s, o) => s + (o.invoice_amount || 0), 0);
+    const now = new Date();
+    const thisMonth = orders
+      .filter((o) => o.payment_status === 'paid' && o.paid_at)
+      .filter((o) => { const d = new Date(o.paid_at); return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth(); })
+      .reduce((s, o) => s + (o.invoice_amount || 0), 0);
+    return { totalBilled, unpaid, thisMonth };
   }, [orders, isAdmin]);
 
   return (
@@ -166,6 +179,21 @@ export default function DashboardPanel() {
 
       {me && me !== 'anon' && orders !== null && isAdmin && adminStats && (
         <>
+          <div className="info-card" style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>총 청구액</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700 }}>{fmtWon(financials.totalBilled)}원</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>미수금</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: financials.unpaid ? 'var(--warn)' : 'var(--ink)' }}>{fmtWon(financials.unpaid)}원</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>이번 달 매출</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: 'var(--ok)' }}>{fmtWon(financials.thisMonth)}원</div>
+            </div>
+          </div>
+
           <div className="info-card">
             <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 10 }}>전체 현황 (최근 {orders.length}건 기준)</div>
             {TRACKS.map((t) => (

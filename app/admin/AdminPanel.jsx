@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '../../lib/supabaseClient';
+import { fmtWon } from '../../lib/report';
 import TopNav from '../_shared/TopNav';
 import { syncOrderToNotion } from '../../lib/notionSyncClient';
 
@@ -173,6 +174,44 @@ function TrackAssignRow({ track, order, users, onAssign, busy }) {
   );
 }
 
+const PAYMENT_LABEL = { unbilled: '미청구', billed: '청구완료', paid: '입금완료' };
+
+// 2026-09-16 신설 — 관리자 대시보드 금액 지표(박길일님 요청 ②). 이 화면에서 직접
+// 청구금액·입금상태를 입력할 수 있게 해야 집계할 데이터가 생긴다(지금까지는
+// invoice_amount/payment_status를 쓰는 곳이 이 화면 말고 없었다).
+function BillingRow({ order, onSave, busy }) {
+  const [amount, setAmount] = useState(order.invoice_amount ?? '');
+  const [status, setStatus] = useState(order.payment_status || 'unbilled');
+
+  return (
+    <div style={{ padding: '8px 0', borderTop: '1px solid var(--line-soft)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <span style={{ width: 40, fontSize: 12.5, fontWeight: 700 }}>청구</span>
+      <input
+        type="number"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        placeholder="청구금액"
+        style={{ width: 110, height: 32, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-alt)', color: 'var(--ink)', fontSize: 12.5, padding: '0 8px' }}
+      />
+      <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ height: 32, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-alt)', color: 'var(--ink)', fontSize: 12.5, padding: '0 8px' }}>
+        {Object.entries(PAYMENT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      <button
+        type="button"
+        className="btn"
+        style={{ padding: '6px 12px', fontSize: 12.5 }}
+        disabled={busy}
+        onClick={() => onSave(order, amount === '' ? null : parseInt(amount, 10), status)}
+      >
+        {busy ? '저장 중…' : '저장'}
+      </button>
+      {order.payment_status === 'paid' && order.paid_at && (
+        <span style={{ fontSize: 11.5, color: 'var(--ok)' }}>{new Date(order.paid_at).toLocaleDateString('ko-KR')} 입금</span>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPanel() {
   const supabase = useMemo(() => createClient(), []);
   const [me, setMe] = useState(null);
@@ -229,7 +268,38 @@ export default function AdminPanel() {
     setBusyKey(null);
   }
 
+  async function handleBilling(order, invoiceAmount, paymentStatus) {
+    const key = order.id + ':billing';
+    setBusyKey(key);
+    const patch = { invoice_amount: invoiceAmount, payment_status: paymentStatus };
+    if (paymentStatus === 'paid' && order.payment_status !== 'paid') patch.paid_at = new Date().toISOString();
+    if (paymentStatus !== 'paid') patch.paid_at = null;
+    const { error } = await supabase.from('work_orders').update(patch).eq('id', order.id);
+    if (!error) {
+      setOrders((os) => os.map((o) => (o.id === order.id ? { ...o, ...patch } : o)));
+      syncOrderToNotion(order.id);
+    }
+    setBusyKey(null);
+  }
+
   const visibleOrders = (orders || []).filter((o) => !hideCompleted || o.overall_status !== 'completed');
+
+  // 2026-09-16: 총 청구액/미수금/이번달 매출 — 관리자 대시보드 금액 지표(박길일님
+  // 요청 ②). work_orders.invoice_amount/payment_status/paid_at 기준으로 집계한다.
+  const financials = useMemo(() => {
+    const rows = orders || [];
+    const totalBilled = rows.reduce((s, o) => s + (o.invoice_amount || 0), 0);
+    const unpaid = rows.filter((o) => o.payment_status !== 'paid').reduce((s, o) => s + (o.invoice_amount || 0), 0);
+    const now = new Date();
+    const thisMonth = rows
+      .filter((o) => o.payment_status === 'paid' && o.paid_at)
+      .filter((o) => {
+        const d = new Date(o.paid_at);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      })
+      .reduce((s, o) => s + (o.invoice_amount || 0), 0);
+    return { totalBilled, unpaid, thisMonth };
+  }, [orders]);
 
   return (
     <>
@@ -263,6 +333,18 @@ export default function AdminPanel() {
               <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>전체 건수</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700 }}>{orders.length}건</div>
             </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>총 청구액</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700 }}>{fmtWon(financials.totalBilled)}원</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>미수금</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: financials.unpaid ? 'var(--warn)' : 'var(--ink)' }}>{fmtWon(financials.unpaid)}원</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>이번 달 매출</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: 'var(--ok)' }}>{fmtWon(financials.thisMonth)}원</div>
+            </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginLeft: 'auto' }}>
               <input type="checkbox" checked={hideCompleted} onChange={(e) => setHideCompleted(e.target.checked)} />
               완료된 건 숨기기
@@ -283,6 +365,9 @@ export default function AdminPanel() {
               {TRACKS.map((t) => (
                 <TrackAssignRow key={t.key} track={t} order={order} users={users} onAssign={handleAssign} busy={busyKey === order.id + ':' + t.key} />
               ))}
+              {order.overall_status !== 'received' && (
+                <BillingRow order={order} onSave={handleBilling} busy={busyKey === order.id + ':billing'} />
+              )}
             </div>
           ))}
         </>
