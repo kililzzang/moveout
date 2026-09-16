@@ -24,17 +24,20 @@ export async function GET(request) {
   // 자정(KST)이 지나면 "오늘"이 비어서 샘플을 못 만드니, 그냥 가장 최근
   // 게시된 건 하나를 쓴다(날짜 제한 없음) — 확인용 샘플이라 상관없다.
   const supabase = createServiceClient();
-  const { data: rows, error } = await supabase
-    .from('post_queue')
-    .select('*')
-    .eq('status', 'posted')
-    .order('posted_at', { ascending: false })
-    .limit(1);
+  const { data: rows, error } = await supabase.from('post_queue').select('*').limit(20);
 
   if (error) {
     return NextResponse.json({ error: `조회 실패: ${error.message}` }, { status: 500 });
   }
-  const row = rows?.[0];
+  if (searchParams.get('debug') === '1') {
+    return NextResponse.json({
+      count: rows?.length || 0,
+      rows: (rows || []).map((r) => ({ id: r.id, status: r.status, posted_at: r.posted_at, title: r.title })),
+    });
+  }
+  const posted = (rows || []).filter((r) => r.status === 'posted' && r.posted_at);
+  posted.sort((a, b) => new Date(b.posted_at) - new Date(a.posted_at));
+  const row = posted[0] || rows?.[0];
   if (!row) {
     return NextResponse.json({ error: '게시된 건이 없어요.' }, { status: 404 });
   }
