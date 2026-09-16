@@ -35,7 +35,9 @@ export async function GET(request) {
       rows: (rows || []).map((r) => ({ id: r.id, status: r.status, posted_at: r.posted_at, title: r.title })),
     });
   }
-  const posted = (rows || []).filter((r) => r.status === 'posted' && r.posted_at);
+  // status 값이 다른 세션이 추가한 기능(작업 배정 등)과 겹쳐 쓰이는 것 같아서
+  // 믿을 수 없다 — 실제 게시 여부는 posted_at이 채워졌는지로 판단한다.
+  const posted = (rows || []).filter((r) => r.posted_at);
   posted.sort((a, b) => new Date(b.posted_at) - new Date(a.posted_at));
   const row = posted[0] || rows?.[0];
   if (!row) {
