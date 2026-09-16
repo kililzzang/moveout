@@ -4,19 +4,8 @@ import { createServiceClient } from '../../../lib/supabaseServer';
 import { buildMediaFromRow, buildDefectSummaryLines } from '../../../lib/postMedia';
 import { buildArchiveHtml, buildArchivePdf, buildArchiveDocx } from '../../../lib/archive';
 
-// 오늘 게시된 것 중 가장 최근 건을 PDF/HTML/DOCX 샘플로 만들어보는 실험용
-// 라우트. ?format=pdf|html|docx 로 고른다. 확인 끝나면 지워도 된다.
-function todayRangeKST() {
-  const now = new Date();
-  const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const y = kstNow.getUTCFullYear();
-  const m = kstNow.getUTCMonth();
-  const d = kstNow.getUTCDate();
-  const startKST = Date.UTC(y, m, d, 0, 0, 0) - 9 * 60 * 60 * 1000;
-  const endKST = startKST + 24 * 60 * 60 * 1000;
-  return { start: new Date(startKST).toISOString(), end: new Date(endKST).toISOString() };
-}
-
+// 가장 최근 게시된 건을 PDF/HTML/DOCX 샘플로 만들어보는 실험용 라우트.
+// ?format=pdf|html|docx 로 고른다. 확인 끝나면 지워도 된다.
 const MIME = { pdf: 'application/pdf', html: 'text/html; charset=utf-8', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
 
 export async function GET(request) {
@@ -32,14 +21,13 @@ export async function GET(request) {
     return NextResponse.json({ error: 'format은 pdf, html, docx 중 하나여야 해요.' }, { status: 400 });
   }
 
-  const { start, end } = todayRangeKST();
+  // 자정(KST)이 지나면 "오늘"이 비어서 샘플을 못 만드니, 그냥 가장 최근
+  // 게시된 건 하나를 쓴다(날짜 제한 없음) — 확인용 샘플이라 상관없다.
   const supabase = createServiceClient();
   const { data: rows, error } = await supabase
     .from('post_queue')
     .select('*')
     .eq('status', 'posted')
-    .gte('posted_at', start)
-    .lt('posted_at', end)
     .order('posted_at', { ascending: false })
     .limit(1);
 
@@ -48,7 +36,7 @@ export async function GET(request) {
   }
   const row = rows?.[0];
   if (!row) {
-    return NextResponse.json({ error: '오늘 게시된 건이 없어요.' }, { status: 404 });
+    return NextResponse.json({ error: '게시된 건이 없어요.' }, { status: 404 });
   }
 
   // 샘플 확인용이라 사진을 전부 원본 화질로 박아 넣으면 파일이 수십 MB로
