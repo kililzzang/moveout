@@ -184,6 +184,7 @@ create table if not exists work_orders (
   -- [{label, note, amount, done, done_note}] 형태로 여기 스냅샷해두고, 보수
   -- 작업자가 /assignments에서 항목별로 체크하면 done이 true로 바뀐다.
   repair_items jsonb not null default '[]',
+  repair_note text not null default '', -- 보수작업자가 남기는 종합 추가사항(박길일님 요청, 2026-09-16)
 
   cleaning_email text references allowed_users(email),
   cleaning_status text not null default 'assigned'
@@ -191,6 +192,15 @@ create table if not exists work_orders (
   cleaning_due_at timestamptz,
   cleaning_reject_reason text,
   cleaning_completed_at timestamptz,
+  -- repair_items와 같은 모양 — 점검에서 나온 청소 카테고리(흡연/스티커/폐기물/
+  -- 추가청소비용/반려동물) 하자를 스냅샷해서 청소작업자가 항목별로 체크한다.
+  cleaning_items jsonb not null default '[]',
+  -- 2026-09-16 추가: 청소작업자가 청소하다가 새로 발견한 하자를 그 자리에서 남길 수
+  -- 있게(박길일님 요청) — repair_items와 같은 모양이지만 출처가 다르다(점검 때가
+  -- 아니라 청소 중 신규 발견). 여기 쌓인 항목은 관리자가 보고 별도 보수 배정으로
+  -- 이어갈 수 있다.
+  cleaning_found_defects jsonb not null default '[]',
+  cleaning_note text not null default '',
 
   materials_used jsonb not null default '[]',
   invoice_amount integer,
@@ -199,9 +209,13 @@ create table if not exists work_orders (
 
   notion_page_id text
 );
--- work_orders CREATE TABLE을 이미 실행해서 repair_items 없이 만든 배포도 있을 수
+-- work_orders CREATE TABLE을 이미 실행해서 아래 컬럼들 없이 만든 배포도 있을 수
 -- 있으니, 여기서도 한 번 더 안전하게 추가한다(이미 있으면 아무 일도 안 함).
 alter table work_orders add column if not exists repair_items jsonb not null default '[]';
+alter table work_orders add column if not exists repair_note text not null default '';
+alter table work_orders add column if not exists cleaning_items jsonb not null default '[]';
+alter table work_orders add column if not exists cleaning_found_defects jsonb not null default '[]';
+alter table work_orders add column if not exists cleaning_note text not null default '';
 
 create index if not exists work_orders_unit_idx on work_orders (unit_key);
 create index if not exists work_orders_inspector_idx on work_orders (inspector_email, inspection_status);

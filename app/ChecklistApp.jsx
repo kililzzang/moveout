@@ -740,6 +740,9 @@ export default function ChecklistApp() {
     const repairItems = items
       .filter((it) => it.category === 'maintenance')
       .map((it) => ({ label: it.label, note: it.note, amount: it.amount, done: false, done_note: '' }));
+    const cleaningItems = items
+      .filter((it) => it.category === 'cleaning')
+      .map((it) => ({ label: it.label, note: it.note, amount: it.amount, done: false, done_note: '' }));
     try {
       const { data: existing } = await supabase
         .from('work_orders')
@@ -759,6 +762,7 @@ export default function ChecklistApp() {
         repair_items: repairItems,
         // 청소는 하자 유무와 무관하게 항상 진행 — 아직 담당자 배정 전이라 'waiting'.
         cleaning_status: 'waiting',
+        cleaning_items: cleaningItems,
         overall_status: 'inspected',
       };
       if (existing) {
@@ -939,6 +943,8 @@ export default function ChecklistApp() {
               <Link href="/repair" target="_blank" className="btn">보수작업 목록</Link>
               <Link href="/cleaning" target="_blank" className="btn">청소작업 목록</Link>
               <Link href="/assignments" target="_blank" className="btn">내 작업 배정</Link>
+              <Link href="/repair-clipboard" target="_blank" className="btn">하자보수 클립보드</Link>
+              <Link href="/cleaning-clipboard" target="_blank" className="btn">청소완료 클립보드</Link>
             </>
           )}
           <button type="button" className="btn primary" onClick={handleSaveReport}>리포트 저장·복사</button>
