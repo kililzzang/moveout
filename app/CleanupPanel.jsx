@@ -62,10 +62,16 @@ export default function CleanupPanel({ supabase, onClose, onLoad }) {
   return (
     <div className="overlay">
       <div className="cleanup-box">
-        <h3 style={{ marginTop: 0 }}>정리함</h3>
+        <div className="cleanup-header">
+          <h3>정리함</h3>
+          {/* 2026-09-16: 닫기 버튼이 맨 아래에만 있어서 못 찾을 수 있다는 피드백(박길일님) —
+              다른 모달(Lightbox)처럼 우상단에도 ×버튼을 추가. 아래 "닫기" 버튼은 그대로 둔다. */}
+          <button type="button" className="cleanup-x" onClick={onClose} aria-label="닫기">×</button>
+        </div>
         <p className="cleanup-hint">
           "리포트 저장·복사"를 누를 때마다 저장된 점검 기록이 여기 모여요. 게시글 올린 지
-          1일 지난 기록은 서버가 매일 밤 자동으로 정리하지만, 사진은 마이박스 폴더에서
+          1일 지난 기록은 "정리 가능"으로 표시되니(자동 삭제는 꺼져 있어요, 기록은 영구
+          보관됩니다) 필요하면 직접 지워주시고, 사진은 마이박스 폴더에서도
           <b> 직접</b> 지워주세요.
         </p>
         {rows === null && <div className="cleanup-empty">불러오는 중…</div>}
