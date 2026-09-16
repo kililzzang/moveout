@@ -6,6 +6,7 @@ import { fmtWon } from '../../lib/report';
 import { KNOWN_BUILDINGS } from '../../lib/checklistState';
 import TopNav from '../_shared/TopNav';
 import { syncOrderToNotion } from '../../lib/notionSyncClient';
+import { uploadCompletionPhoto } from '../../lib/photoUpload';
 
 // 2026-09-16 신설 — "청소완료 클립보드"(박길일님 설계). 하자보수 클립보드와 구조는
 // 같되(호실 입력 → 최근 점검의 청소 대상 항목 불러와 체크), 청소는 일하면서 새로
@@ -69,6 +70,22 @@ export default function CleaningClipboard() {
     setItems((its) => its.map((it, i) => (i === idx ? { ...it, done: !it.done } : it)));
   }
 
+  function updateItemField(idx, patch) {
+    setItems((its) => its.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  }
+
+  async function handleItemPhoto(idx, file) {
+    if (!file || !order) return;
+    updateItemField(idx, { photoUploading: true });
+    try {
+      const url = await uploadCompletionPhoto(supabase, order.id, file);
+      updateItemField(idx, { photo_url: url, photoUploading: false });
+    } catch (err) {
+      updateItemField(idx, { photoUploading: false });
+      setSaveStatus(err.message || '사진 업로드 실패');
+    }
+  }
+
   function addFoundDefect() {
     if (!newLabel.trim()) return;
     setFoundDefects((f) => f.concat([{ label: newLabel.trim(), amount: parseInt(newAmount, 10) || 0 }]));
@@ -83,7 +100,8 @@ export default function CleaningClipboard() {
   async function handleSave(markComplete) {
     if (!order) return;
     setSaveStatus('저장 중…');
-    const patch = { cleaning_items: items, cleaning_found_defects: foundDefects, cleaning_note: note };
+    const cleanItems = items.map(({ photoUploading, ...it }) => it);
+    const patch = { cleaning_items: cleanItems, cleaning_found_defects: foundDefects, cleaning_note: note };
     if (markComplete) {
       patch.cleaning_status = 'completed';
       patch.cleaning_completed_at = new Date().toISOString();
@@ -153,17 +171,43 @@ export default function CleaningClipboard() {
             <div className="info-card">
               <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                 {items.map((it, idx) => (
-                  <li key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderTop: idx ? '1px solid var(--line-soft)' : 'none' }}>
-                    <input
-                      type="checkbox"
-                      id={`cleaning-clip-item-${idx}`}
-                      checked={!!it.done}
-                      onChange={() => toggleItem(idx)}
-                      style={{ marginTop: 3, width: 18, height: 18 }}
-                    />
-                    <label htmlFor={`cleaning-clip-item-${idx}`} style={{ flex: 1, textDecoration: it.done ? 'line-through' : 'none', color: it.done ? 'var(--ink-faint)' : 'var(--ink)' }}>
-                      {it.label}{it.note ? ' — ' + it.note : ''}{it.amount ? ' (' + fmtWon(it.amount) + '원)' : ''}
-                    </label>
+                  <li key={idx} style={{ padding: '10px 0', borderTop: idx ? '1px solid var(--line-soft)' : 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <input
+                        type="checkbox"
+                        id={`cleaning-clip-item-${idx}`}
+                        checked={!!it.done}
+                        onChange={() => toggleItem(idx)}
+                        style={{ marginTop: 3, width: 18, height: 18 }}
+                      />
+                      <label htmlFor={`cleaning-clip-item-${idx}`} style={{ flex: 1, textDecoration: it.done ? 'line-through' : 'none', color: it.done ? 'var(--ink-faint)' : 'var(--ink)' }}>
+                        {it.label}{it.note ? ' — ' + it.note : ''}{it.amount ? ' (견적 ' + fmtWon(it.amount) + '원)' : ''}
+                      </label>
+                    </div>
+                    {it.amount ? (
+                      <div className="amount-row" style={{ marginLeft: 28 }}>
+                        <span style={{ fontSize: 11.5, color: 'var(--ink-soft)' }}>실제 금액</span>
+                        <input
+                          type="number"
+                          value={it.actual_amount ?? ''}
+                          onChange={(e) => updateItemField(idx, { actual_amount: e.target.value === '' ? null : parseInt(e.target.value, 10) })}
+                          placeholder="원"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="photo-row" style={{ marginLeft: 28 }}>
+                      {it.photo_url && (
+                        <div className="photo-thumbs">
+                          <a href={it.photo_url} target="_blank" rel="noreferrer" className="photo-thumb">
+                            <img src={it.photo_url} alt="완료사진" />
+                          </a>
+                        </div>
+                      )}
+                      <label className="btn" style={{ fontSize: 11.5, padding: '5px 10px', cursor: 'pointer', display: 'inline-block' }}>
+                        {it.photoUploading ? '업로드 중…' : (it.photo_url ? '사진 다시 올리기' : '완료사진 첨부')}
+                        <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleItemPhoto(idx, f); }} />
+                      </label>
+                    </div>
                   </li>
                 ))}
               </ul>
