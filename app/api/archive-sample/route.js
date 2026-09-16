@@ -67,6 +67,21 @@ export async function GET(request) {
     else fileBuf = Buffer.from(await buildArchiveHtml(args), 'utf-8');
 
     const safeTitle = (row.title || 'report').replace(/[^A-Za-z0-9가-힣_.\-]/g, '_').slice(0, 60);
+
+    // 브라우저로 큰 파일을 직접 다운로드하면(특히 사진 전체 포함) 중간에
+    // 끊기거나 이상한 임시파일로 남는 문제가 있어서, ?upload=1이면 다운로드
+    // 대신 Supabase Storage에 올리고 공개 URL을 돌려준다 — 그 URL은 그냥
+    // curl로 바로 받을 수 있다. 확인용 임시 파일이라 나중에 지워야 한다.
+    if (searchParams.get('upload') === '1') {
+      const path = `_archive_samples/${Date.now()}-sample.${format}`;
+      const { error: uploadErr } = await supabase.storage.from('photos').upload(path, fileBuf, {
+        contentType: MIME[format],
+      });
+      if (uploadErr) throw uploadErr;
+      const { data } = supabase.storage.from('photos').getPublicUrl(path);
+      return NextResponse.json({ ok: true, path, url: data.publicUrl, bytes: fileBuf.length });
+    }
+
     return new NextResponse(fileBuf, {
       headers: {
         'Content-Type': MIME[format],
