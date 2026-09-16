@@ -48,7 +48,10 @@ export default function WorkList({ category, title, subtitle, emptyText }) {
   return (
     <div className="wrap">
       <div className="masthead">
-        <h1>{title}</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <h1>{title}</h1>
+          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
+        </div>
         <p>{subtitle}</p>
       </div>
 

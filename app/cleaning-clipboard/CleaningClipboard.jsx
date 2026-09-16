@@ -94,7 +94,10 @@ export default function CleaningClipboard() {
   return (
     <div className="wrap">
       <div className="masthead">
-        <h1>청소완료 클립보드</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <h1>청소완료 클립보드</h1>
+          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
+        </div>
         <p>건물명·호실을 입력하면 가장 최근 점검에서 나온 청소 대상 항목을 불러옵니다. 청소하다 새로 발견한 하자가 있으면 그 자리에서 추가해주세요.</p>
       </div>
 

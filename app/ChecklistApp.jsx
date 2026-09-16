@@ -879,7 +879,14 @@ export default function ChecklistApp() {
   return (
     <div className="wrap">
       <div className="masthead">
-        <h1>퇴실점검 클립보드</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <h1>퇴실점검 클립보드</h1>
+          {/* 2026-09-16: 로그아웃 버튼(박길일님 요청) — 세션이 180일 유지라 로그인
+              화면을 다시 볼 일이 거의 없는데, 계정을 바꿔 로그인해야 할 때(다른
+              점검원 테스트 등) 로그아웃할 방법이 없었다. /api/auth/logout은
+              proxy.js에서 이미 공개 경로라 그냥 링크만 걸면 된다. */}
+          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
+        </div>
         <p>항목마다 상태를 표시하고, 하자가 있으면 비고·금액을 적으세요. 사진·동영상은 각 항목에 바로 첨부할 수 있습니다(파일당 {MAX_PHOTO_MB}MB).</p>
       </div>
 

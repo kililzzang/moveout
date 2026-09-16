@@ -103,7 +103,10 @@ export default function DashboardPanel() {
   return (
     <div className="wrap">
       <div className="masthead">
-        <h1>담당별 대시보드</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <h1>담당별 대시보드</h1>
+          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
+        </div>
         <p>{me && me !== 'anon' ? `${me.name || me.email}님 (${me.role})` : '불러오는 중…'}</p>
       </div>
 

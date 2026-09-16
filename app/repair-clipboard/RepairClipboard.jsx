@@ -81,7 +81,10 @@ export default function RepairClipboard() {
   return (
     <div className="wrap">
       <div className="masthead">
-        <h1>하자보수 클립보드</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <h1>하자보수 클립보드</h1>
+          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
+        </div>
         <p>건물명·호실을 입력하면 가장 최근 점검에서 나온 보수 대상 하자를 불러옵니다. 고친 항목을 체크하고, 필요하면 추가사항을 적어주세요.</p>
       </div>
 

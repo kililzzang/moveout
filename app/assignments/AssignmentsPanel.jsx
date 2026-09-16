@@ -126,7 +126,10 @@ export default function AssignmentsPanel() {
   return (
     <div className="wrap">
       <div className="masthead">
-        <h1>내 작업 배정</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <h1>내 작업 배정</h1>
+          <a href="/api/auth/logout" className="btn" style={{ flexShrink: 0 }}>로그아웃</a>
+        </div>
         <p>점검·보수·청소 중 나한테 배정된 작업만 모아 보여줍니다. 새 작업이 오면 아래에서 수락·거절하고, 진행 중인 작업은 끝나면 완료 처리하세요.</p>
       </div>
 
