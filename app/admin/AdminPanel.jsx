@@ -176,6 +176,7 @@ export default function AdminPanel() {
   const [me, setMe] = useState(null);
   const [users, setUsers] = useState([]);
   const [orders, setOrders] = useState(null);
+  const [fetchError, setFetchError] = useState(null); // 2026-09-16: 임시 디버그, 확인 후 제거 예정
   const [units, setUnits] = useState({});
   const [hideCompleted, setHideCompleted] = useState(true);
   const [busyKey, setBusyKey] = useState(null);
@@ -196,8 +197,10 @@ export default function AdminPanel() {
       .order('created_at', { ascending: false })
       .limit(300)
       .then(async ({ data, error }) => {
+        if (error) console.error('work_orders 조회 실패:', error); // 2026-09-16: 임시 디버그 — 0건으로 보이는 원인 확인용, 확인 후 제거 예정
         const rows = error ? [] : (data || []);
         setOrders(rows);
+        setFetchError(error ? error.message : null);
         const unitKeys = [...new Set(rows.map((r) => r.unit_key).filter(Boolean))];
         if (unitKeys.length) {
           const { data: insp } = await supabase.from('inspections').select('id, building, unit').in('id', unitKeys);
@@ -243,6 +246,12 @@ export default function AdminPanel() {
       {me && me !== 'anon' && hasRole(me, 'admin') && orders !== null && (
         <>
           <UserManagement users={users} onChanged={refreshUsers} />
+
+          {fetchError && (
+            <div className="info-card" style={{ borderColor: 'var(--bad)', color: 'var(--bad)', fontSize: 13 }}>
+              작업 목록 조회 실패: {fetchError}
+            </div>
+          )}
 
           <div className="info-card" style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
             <div>
