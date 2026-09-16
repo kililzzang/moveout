@@ -131,5 +131,63 @@ create table if not exists oauth_tokens (
   expires_at timestamptz not null,
   updated_at timestamptz not null default now()
 );
+-- ---- 작업 배정(work_orders) — 점검/보수/청소 3개 트랙 병렬 추적, 2026-09-16 추가 ----
+-- Notion팀이 설계한 스키마(Notion "작업관리" DB와 notion_page_id로 1:1 대응, Supabase가
+-- 원본이고 Notion은 단방향 미러)를 그대로 옮긴 것. unit_key는 inspections.id를 참조하되,
+-- inspections처럼 호실당 1행으로 덮어쓰지 않는다 — 같은 호실이 다음 세입자 때 다시
+-- 점검되면 새 work_orders 행이 또 생긴다(진행 중인 작업 사이클이 다음 점검에 덮어써지는
+-- 사고를 막으려고 별도 PK를 쓴다, 전에 지적한 문제).
+--
+-- inspector/repair/cleaning의 담당자는 이 프로젝트에 범용 users 표가 없어서, 이미 로그인
+-- 신원으로 쓰는 allowed_users.email을 그대로 쓴다(Notion 원안은 FK -> users였지만 이
+-- 프로젝트 컨벤션에 맞춤). repair_status에만 'not_applicable'이 있고 cleaning_status에는
+-- 없는 이유: 보수는 하자가 있을 때만, 청소는 하자 유무와 무관하게 항상 생성되기 때문.
+create table if not exists work_orders (
+  id uuid primary key default gen_random_uuid(),
+  unit_key text not null references inspections(id),
+  source text not null default 'manual' check (source in ('form', 'manual')),
+  created_at timestamptz not null default now(),
+
+  overall_status text not null default 'received'
+    check (overall_status in ('received','inspecting','inspected','processing','billing_pending','completed')),
+
+  inspector_email text references allowed_users(email),
+  inspection_status text not null default 'assigned'
+    check (inspection_status in ('assigned','rejected','in_progress','completed')),
+  inspection_due_at timestamptz,
+  inspection_reject_reason text,
+  inspection_completed_at timestamptz,
+
+  repair_email text references allowed_users(email),
+  repair_status text not null default 'not_applicable'
+    check (repair_status in ('not_applicable','assigned','rejected','waiting','in_progress','completed')),
+  repair_due_at timestamptz,
+  repair_reject_reason text,
+  repair_completed_at timestamptz,
+
+  cleaning_email text references allowed_users(email),
+  cleaning_status text not null default 'assigned'
+    check (cleaning_status in ('assigned','rejected','waiting','in_progress','completed')),
+  cleaning_due_at timestamptz,
+  cleaning_reject_reason text,
+  cleaning_completed_at timestamptz,
+
+  materials_used jsonb not null default '[]',
+  invoice_amount integer,
+  payment_status text not null default 'unbilled' check (payment_status in ('unbilled','billed','paid')),
+  paid_at timestamptz,
+
+  notion_page_id text
+);
+create index if not exists work_orders_unit_idx on work_orders (unit_key);
+create index if not exists work_orders_inspector_idx on work_orders (inspector_email, inspection_status);
+create index if not exists work_orders_repair_idx on work_orders (repair_email, repair_status);
+create index if not exists work_orders_cleaning_idx on work_orders (cleaning_email, cleaning_status);
+
+alter table work_orders enable row level security;
+-- 다른 팀 공유 표들과 동일한 수준으로 열어둔다(로그인은 proxy.js 미들웨어가 이미 막고
+-- 있어서, 로그인한 사람이면 전부 볼 수 있는 지금 정책과 일관됨).
+create policy "public read/write (team-wide, same as other tables)" on work_orders for all using (true) with check (true);
+
 alter table oauth_tokens enable row level security;
 create policy "service role only" on oauth_tokens for all using (false) with check (false);
