@@ -3,6 +3,9 @@
   "functions": {
     "app/api/storage-usage/route.js": {
       "maxDuration": 30
+    },
+    "app/api/archive-sample/route.js": {
+      "maxDuration": 60
     }
   }
 }
