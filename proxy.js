@@ -16,7 +16,7 @@ import { verifySessionCookieValue, SESSION_COOKIE_NAME } from './lib/session';
 // 하면서 호실점검원들이 혼란이 있으면 안 됌"). allowed_users.is_dev가 true인
 // 계정으로 로그인했을 때만 세션 쿠키에 is_dev가 실려서, 그 값으로 판단한다 — DB를
 // 매번 다시 조회하지 않는다.
-const DEV_ONLY_PATHS = ['/repair', '/cleaning', '/assignments', '/repair-clipboard', '/cleaning-clipboard', '/dashboard'];
+const DEV_ONLY_PATHS = ['/repair', '/cleaning', '/assignments', '/repair-clipboard', '/cleaning-clipboard', '/dashboard', '/admin'];
 
 // 담당별 대시보드/역할 라우팅 설계(박길일님, 2026-09-16)의 1단계 — 보수·청소
 // 작업자는 로그인하면 체크리스트("/") 대신 자기 클립보드로 바로 보낸다.
