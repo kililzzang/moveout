@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifySessionCookieValue, SESSION_COOKIE_NAME } from '../../../../lib/session';
 import { getValidAccessToken } from '../../../../lib/oauthTokens';
-import { postToBoard, addPostAttachment } from '../../../../lib/naverworks';
+import { postToBoard, addPostAttachment, getPostAttachmentUrl } from '../../../../lib/naverworks';
 
 // "게시글 첨부파일 API"(드라이브 링크와 다른, 게시글 전용 업로드)로 올린 사진들이
 // 본문 안에서 여러 장 다 썸네일로 보이는지, 순서가 유지되는지 확인해보는 1회성
@@ -22,7 +22,7 @@ export async function GET(request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const count = Math.min(Math.max(parseInt(searchParams.get('count') || '6', 10) || 6, 1), 8);
+  const count = Math.min(Math.max(parseInt(searchParams.get('count') || '2', 10) || 2, 1), 8);
 
   let postId;
   const uploaded = [];
@@ -70,7 +70,23 @@ export async function GET(request) {
         }
       }
       if (lastErr) throw lastErr;
-      uploaded.push({ fileName, attachResult });
+
+      // 공식 문서가 안내하는 302 Location 방식으로 이 파일의 실제 접근 URL을
+      // 물어본다 — 이 URL을 본문 HTML에 직접 <img src>로 넣을 수 있는지가
+      // 핵심 확인 사항이다.
+      let fileUrl = null;
+      try {
+        fileUrl = await getPostAttachmentUrl({
+          accessToken,
+          boardId,
+          postId,
+          attachmentId: attachResult.fileId,
+        });
+      } catch (urlErr) {
+        fileUrl = `조회 실패: ${urlErr.message}`;
+      }
+
+      uploaded.push({ fileName, fileId: attachResult.fileId, fileUrl });
     }
 
     return NextResponse.json({ ok: true, postId, uploaded });
