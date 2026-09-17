@@ -292,7 +292,7 @@ function HistoryPanel({ entry, repairHistory, building, unit, remark, onRemarkCh
   );
 }
 
-function PhotoThumbs({ photos, onDelete, onOpen }) {
+function PhotoThumbs({ photos, onDelete, onOpen, onToggleDefect }) {
   if (!photos.length) return null;
   return (
     <div className="photo-thumbs">
@@ -305,7 +305,17 @@ function PhotoThumbs({ photos, onDelete, onOpen }) {
               <img src={p.url} alt="" />
             )}
             {isVideo && <div className="photo-thumb-play" />}
-            {p.isDefect && <span className="photo-thumb-badge">하자</span>}
+            {/* 2026-09-17 신설(박길일님 요청) — "정상"으로 찍은 사진을 나중에 "하자"로,
+                또는 그 반대로 재분류할 수 있어야 한다는 요청. 사진을 다시 올릴 필요 없이
+                isDefect 플래그만 바꾸면 되므로 배지를 눌러서 바로 토글한다. */}
+            <button
+              type="button"
+              className={'photo-thumb-badge' + (p.isDefect ? '' : ' ok')}
+              onClick={(e) => { e.stopPropagation(); onToggleDefect(i); }}
+              title="눌러서 정상/하자 분류를 바꿀 수 있어요"
+            >
+              {p.isDefect ? '하자' : '정상'}
+            </button>
             <button type="button" className="photo-thumb-del" onClick={(e) => { e.stopPropagation(); onDelete(i); }}>×</button>
           </div>
         );
@@ -379,6 +389,12 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
     if (removed) supabase.storage.from('photos').remove([removed.id]).catch(() => {});
   }
 
+  function togglePhotoDefect(idx) {
+    const photos = (entry.photos || []).slice();
+    photos[idx] = { ...photos[idx], isDefect: !photos[idx].isDefect };
+    onChange({ photos });
+  }
+
   // 2026-09-15: 단가 학습기능(팀 학습 표준가) 삭제 — 이제 표준가는 SECTIONS에 박힌
   // 고정 시드값(meta.std) 하나만 쓴다. 대신 게시글의 최종 청구액과 실제 입금액을
   // 대조해서 정확도를 올리는 방식으로 바꿀 예정(박길일님 요청, 별도 기능으로 진행).
@@ -448,7 +464,7 @@ function ItemRow({ label, hint, meta, entry, onChange, onDelete, docId, supabase
       )}
 
       <div className="photo-row">
-        <PhotoThumbs photos={entry.photos || []} onDelete={deletePhoto} onOpen={onLightbox} />
+        <PhotoThumbs photos={entry.photos || []} onDelete={deletePhoto} onOpen={onLightbox} onToggleDefect={togglePhotoDefect} />
         <div className="photo-add-row">
           {/* 2026-09-15: 하자로 체크된 항목은 "사진 추가"(일반) 버튼을 없애고 "하자사진
               추가" 하나만 남긴다 — 예전엔 하자 항목에서도 두 버튼이 같이 떠서, 일반
