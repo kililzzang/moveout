@@ -29,7 +29,7 @@ export async function GET(request) {
   }
 
   const supabase = createServiceClient();
-  const { data, error } = await supabase.from('allowed_users').select('email, name, role, roles, is_dev').order('name');
+  const { data, error } = await supabase.from('allowed_users').select('email, name, role, roles, is_dev, assign_weight').order('name');
   if (error) {
     return NextResponse.json({ error: `조회 실패: ${error.message}` }, { status: 500 });
   }
@@ -54,10 +54,18 @@ export async function POST(request) {
     return NextResponse.json({ error: '이메일과 역할을 최소 1개 이상 입력해주세요.' }, { status: 400 });
   }
 
+  // 2026-09-17: 자동 배정 가중치(assign_weight)도 이 화면에서 같이 바꿀 수 있게
+  // — 값이 안 왔으면(역할만 토글하는 기존 흐름) 건드리지 않는다.
+  const payload = { email, name, role: roles[0], roles };
+  if (body.assignWeight !== undefined && body.assignWeight !== null && body.assignWeight !== '') {
+    const w = parseFloat(body.assignWeight);
+    if (!Number.isNaN(w)) payload.assign_weight = w;
+  }
+
   const supabase = createServiceClient();
   const { error } = await supabase
     .from('allowed_users')
-    .upsert({ email, name, role: roles[0], roles }, { onConflict: 'email' });
+    .upsert(payload, { onConflict: 'email' });
   if (error) {
     return NextResponse.json({ error: `저장 실패: ${error.message}` }, { status: 500 });
   }

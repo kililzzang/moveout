@@ -4,6 +4,7 @@ import { createClient } from '../../lib/supabaseClient';
 import { fmtWon } from '../../lib/report';
 import TopNav from '../_shared/TopNav';
 import { syncOrderToNotion } from '../../lib/notionSyncClient';
+import { suggestAssignees, DEFAULT_AUTO_ASSIGN_SETTINGS, CRITERIA_LABELS } from '../../lib/autoAssign';
 
 // 2026-09-16 신설 — "관리자 클립보드"(박길일님 설계 5번, 가장 큰 작업): 각 work_order의
 // 점검/보수/청소 트랙을 담당자에게 배정하고, 진행 상태·수락/거절 여부를 한눈에 본다.
@@ -45,6 +46,29 @@ function hasRole(user, role) {
 // 체크박스 하나 토글할 때마다 그 사람의 roles 배열 전체를 다시 저장한다(개별
 // role만 따로 켜고 끄는 API를 만들기보다, 매번 "이 사람의 최종 역할 집합은
 // 이거다"를 통째로 보내는 게 더 단순하고 꼬일 일이 없다).
+// 2026-09-17 신설 — 자동 배정에서 "특정인 가중치" 기준이 쓰는 값(기본 1 = 보통,
+// 높을수록 더 자주 추천됨). 타이핑할 때마다 저장하면 너무 잦으니 포커스를 벗어날
+// 때(blur) 한 번만 저장한다.
+function UserWeightInput({ user, onSave, disabled }) {
+  const [value, setValue] = useState(String(user.assign_weight ?? 1));
+
+  return (
+    <input
+      type="number"
+      step="0.1"
+      min="0"
+      value={value}
+      disabled={disabled}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        const w = parseFloat(value);
+        if (!Number.isNaN(w) && w !== (user.assign_weight ?? 1)) onSave(user, w);
+      }}
+      style={{ width: 56, height: 26, borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface-alt)', color: 'var(--ink)', fontSize: 12, padding: '0 6px', textAlign: 'right' }}
+    />
+  );
+}
+
 function UserManagement({ users, onChanged }) {
   const [busyEmail, setBusyEmail] = useState(null);
   const [newEmail, setNewEmail] = useState('');
@@ -52,13 +76,13 @@ function UserManagement({ users, onChanged }) {
   const [newRoles, setNewRoles] = useState([]);
   const [status, setStatus] = useState('');
 
-  async function saveUser(email, name, roles) {
+  async function saveUser(email, name, roles, assignWeight) {
     setBusyEmail(email);
     setStatus('');
     const res = await fetch('/api/admin/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name, roles }),
+      body: JSON.stringify({ email, name, roles, assignWeight }),
     });
     const data = await res.json().catch(() => ({}));
     setStatus(res.ok ? '' : data.error || '저장 실패');
@@ -72,6 +96,11 @@ function UserManagement({ users, onChanged }) {
     const next = current.includes(role) ? current.filter((r) => r !== role) : current.concat([role]);
     if (next.length === 0) { setStatus('최소 1개 역할은 있어야 해요.'); return; }
     await saveUser(user.email, user.name, next);
+  }
+
+  async function saveWeight(user, weight) {
+    const roles = user.roles && user.roles.length ? user.roles : [user.role];
+    await saveUser(user.email, user.name, roles, weight);
   }
 
   async function handleDelete(email) {
@@ -101,13 +130,17 @@ function UserManagement({ users, onChanged }) {
             <span style={{ fontSize: 13.5 }}><b>{u.name || '(이름 없음)'}</b> · {u.email}</span>
             <button type="button" className="btn bad" style={{ padding: '4px 10px', fontSize: 12 }} disabled={busyEmail === u.email} onClick={() => handleDelete(u.email)}>삭제</button>
           </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             {ROLE_OPTIONS.map((r) => (
               <label key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5 }}>
                 <input type="checkbox" checked={hasRole(u, r.key)} disabled={busyEmail === u.email} onChange={() => toggleRole(u, r.key)} />
                 {r.label}
               </label>
             ))}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12.5, marginLeft: 'auto', color: 'var(--ink-soft)' }}>
+              자동배정 가중치
+              <UserWeightInput user={u} onSave={saveWeight} disabled={busyEmail === u.email} />
+            </label>
           </div>
         </div>
       ))}
@@ -133,13 +166,85 @@ function UserManagement({ users, onChanged }) {
   );
 }
 
-function TrackAssignRow({ track, order, users, onAssign, busy }) {
+// 2026-09-17 신설 — "담당자 자동 배정 기준" 설정 카드. 켠 기준들의 가중치를
+// app_settings(key='auto_assign')에 저장해두면, 아래 각 작업의 "추천" 버튼이 이
+// 설정을 그대로 쓴다.
+function AutoAssignSettings({ settings, onSave, busy }) {
+  const [criteria, setCriteria] = useState(settings.criteria);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => { setCriteria(settings.criteria); }, [settings]);
+
+  function toggle(key) {
+    setCriteria((c) => ({ ...c, [key]: { ...c[key], enabled: !c[key].enabled } }));
+  }
+  function setWeight(key, w) {
+    setCriteria((c) => ({ ...c, [key]: { ...c[key], weight: w } }));
+  }
+
+  return (
+    <div className="info-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 700 }}>담당자 자동 배정 기준</div>
+        <button type="button" className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setOpen((v) => !v)}>{open ? '접기' : '설정 펼치기'}</button>
+      </div>
+      {open && (
+        <>
+          <div style={{ fontSize: 12, color: 'var(--ink-faint)', margin: '8px 0 12px' }}>
+            켠 기준들의 가중치를 조합해 담당자를 점수로 줄세웁니다. 아래 각 작업의 "추천" 버튼을 누르면 이 설정대로 계산하지만, 실제 배정은 항상 관리자가 확인 후 "배정" 버튼을 눌러야 저장됩니다.
+          </div>
+          {Object.keys(CRITERIA_LABELS).map((key) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderTop: '1px solid var(--line-soft)', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, width: 130, flexShrink: 0 }}>
+                <input type="checkbox" checked={!!criteria[key]?.enabled} onChange={() => toggle(key)} />
+                {CRITERIA_LABELS[key].label}
+              </label>
+              <input
+                type="number" min="0" max="100"
+                value={criteria[key]?.weight ?? 0}
+                disabled={!criteria[key]?.enabled}
+                onChange={(e) => setWeight(key, parseInt(e.target.value, 10) || 0)}
+                style={{ width: 56, height: 28, borderRadius: 6, border: '1px solid var(--line)', background: 'var(--surface-alt)', color: 'var(--ink)', fontSize: 12, padding: '0 6px', textAlign: 'right' }}
+              />
+              <span style={{ fontSize: 11.5, color: 'var(--ink-faint)', flex: 1, minWidth: 160 }}>{CRITERIA_LABELS[key].hint}</span>
+            </div>
+          ))}
+          <div style={{ marginTop: 10 }}>
+            <button type="button" className="btn primary" style={{ padding: '6px 14px', fontSize: 12.5 }} disabled={busy} onClick={() => onSave({ criteria })}>
+              {busy ? '저장 중…' : '설정 저장'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TrackAssignRow({ track, order, users, onAssign, busy, allOrders, buildingByUnitKey, autoAssignSettings }) {
   const status = order[track.statusField];
   const currentEmail = order[track.emailField] || '';
   const [email, setEmail] = useState(currentEmail);
   const [due, setDue] = useState(toDateInputValue(order[track.dueField]));
+  const [suggestions, setSuggestions] = useState(null);
   const candidates = users.filter((u) => hasRole(u, track.role));
   const colors = STATUS_COLOR[status] || STATUS_COLOR.waiting;
+
+  // 2026-09-17 신설 — "추천" 버튼: 설정된 기준으로 후보 점수를 매겨 1위를 담당자
+  // 선택란에 채워준다. 여기서 바로 저장하지 않는다 — 관리자가 보고 "배정"을 눌러야
+  // 확정된다(박길일님 요청: 추천만 하고 관리자가 확정).
+  function handleSuggest() {
+    if (!candidates.length) return;
+    const ranked = suggestAssignees({
+      candidates,
+      track,
+      allOrders,
+      buildingByUnitKey,
+      targetBuilding: buildingByUnitKey[order.unit_key],
+      settings: autoAssignSettings,
+    });
+    setSuggestions(ranked.slice(0, 3));
+    if (ranked[0]) setEmail(ranked[0].candidate.email);
+  }
 
   if (status === 'not_applicable') {
     return (
@@ -166,10 +271,18 @@ function TrackAssignRow({ track, order, users, onAssign, busy }) {
           {candidates.map((u) => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
         </select>
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ height: 32, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface-alt)', color: 'var(--ink)', fontSize: 12.5, padding: '0 8px' }} />
+        <button type="button" className="btn" style={{ padding: '6px 12px', fontSize: 12.5 }} disabled={!candidates.length} onClick={handleSuggest}>추천</button>
         <button type="button" className="btn" style={{ padding: '6px 12px', fontSize: 12.5 }} disabled={!email || busy} onClick={() => onAssign(order, track, email, due)}>
           {busy ? '처리 중…' : (currentEmail ? '재배정' : '배정')}
         </button>
       </div>
+      {suggestions && (
+        <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--ink-faint)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {suggestions.map(({ candidate, score }, i) => (
+            <span key={candidate.email}>{i + 1}위 {candidate.name || candidate.email} ({(score * 100).toFixed(0)}점)</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -224,6 +337,8 @@ export default function AdminPanel() {
   const [units, setUnits] = useState({});
   const [hideCompleted, setHideCompleted] = useState(true);
   const [busyKey, setBusyKey] = useState(null);
+  const [autoAssignSettings, setAutoAssignSettings] = useState(DEFAULT_AUTO_ASSIGN_SETTINGS);
+  const [settingsBusy, setSettingsBusy] = useState(false);
 
   function refreshUsers() {
     fetch('/api/admin/users').then((r) => r.json()).then((d) => setUsers(d.users || []));
@@ -233,6 +348,27 @@ export default function AdminPanel() {
     fetch('/api/session').then((r) => r.json()).then((s) => setMe(s.loggedIn ? s : 'anon'));
     refreshUsers();
   }, []);
+
+  // 2026-09-17: 자동 배정 기준 설정 — app_settings는 이 화면을 포함해 팀 전역
+  // 설정용으로 새로 만든 범용 표라 다른 표들처럼 클라이언트에서 바로 읽고 쓴다.
+  useEffect(() => {
+    supabase.from('app_settings').select('value').eq('key', 'auto_assign').maybeSingle()
+      .then(({ data }) => { if (data && data.value) setAutoAssignSettings(data.value); });
+  }, [supabase]);
+
+  async function handleSaveAutoAssignSettings(next) {
+    setSettingsBusy(true);
+    const { error } = await supabase.from('app_settings')
+      .upsert({ key: 'auto_assign', value: next, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (!error) setAutoAssignSettings(next);
+    setSettingsBusy(false);
+  }
+
+  const buildingByUnitKey = useMemo(() => {
+    const map = {};
+    Object.entries(units).forEach(([k, v]) => { map[k] = v.building; });
+    return map;
+  }, [units]);
 
   useEffect(() => {
     supabase
@@ -322,6 +458,8 @@ export default function AdminPanel() {
         <>
           <UserManagement users={users} onChanged={refreshUsers} />
 
+          <AutoAssignSettings settings={autoAssignSettings} onSave={handleSaveAutoAssignSettings} busy={settingsBusy} />
+
           {fetchError && (
             <div className="info-card" style={{ borderColor: 'var(--bad)', color: 'var(--bad)', fontSize: 13 }}>
               작업 목록 조회 실패: {fetchError}
@@ -363,7 +501,17 @@ export default function AdminPanel() {
               </div>
               <div className="cleanup-item-age">{new Date(order.created_at).toLocaleDateString('ko-KR')} 생성</div>
               {TRACKS.map((t) => (
-                <TrackAssignRow key={t.key} track={t} order={order} users={users} onAssign={handleAssign} busy={busyKey === order.id + ':' + t.key} />
+                <TrackAssignRow
+                  key={t.key}
+                  track={t}
+                  order={order}
+                  users={users}
+                  onAssign={handleAssign}
+                  busy={busyKey === order.id + ':' + t.key}
+                  allOrders={orders || []}
+                  buildingByUnitKey={buildingByUnitKey}
+                  autoAssignSettings={autoAssignSettings}
+                />
               ))}
               {order.overall_status !== 'received' && (
                 <BillingRow order={order} onSave={handleBilling} busy={busyKey === order.id + ':billing'} />

@@ -240,3 +240,20 @@ create policy "public read/write (team-wide, same as other tables)" on work_orde
 
 alter table oauth_tokens enable row level security;
 create policy "service role only" on oauth_tokens for all using (false) with check (false);
+
+-- ---- 담당자 자동 배정(2026-09-17 추가, 박길일님 요청) ----
+-- 관리자 클립보드에서 "추천" 버튼을 누르면 여러 기준(업무량 균형/동선 최적화/특정인
+-- 가중치/랜덤/마감임박 회피/최근배정 회피/최근거절 회피)을 조합해 담당자를 추천한다
+-- (lib/autoAssign.js). 자동으로 배정을 확정하지는 않고, 추천만 채워주면 관리자가
+-- "배정" 버튼을 눌러야 실제로 저장된다. app_settings는 이 기능 말고도 앞으로 생길
+-- 팀 전역 설정을 담는 범용 키-값 표로 쓸 수 있게 만들었다.
+create table if not exists app_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table app_settings enable row level security;
+create policy "public read/write (team-wide, same as other tables)" on app_settings for all using (true) with check (true);
+
+-- 특정 팀원을 자동 배정에서 더/덜 우선하고 싶을 때 쓰는 가중치(기본 1 = 보통).
+alter table allowed_users add column if not exists assign_weight numeric not null default 1;
